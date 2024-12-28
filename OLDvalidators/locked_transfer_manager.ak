@@ -1,92 +1,130 @@
-//This SC receives security tokens that must be locked.
-//Only the custodialAdmin can unlock them and send them back to a user
-use aiken/hash.{Blake2b_224, Hash}
-use aiken/list.{foldl, length}
-use aiken/transaction.{
-  InlineDatum, Input, Output, ScriptContext, Spend, WithdrawFrom,
+use aiken/collection/list.{foldl, length}
+use cardano/address.{Address, Credential, Script, StakeCredential}
+use cardano/assets.{AssetName, flatten, quantity_of}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use aiken/transaction/credential.{Address, Inline, Script, ScriptCredential}
-use aiken/transaction/value.{AssetName, PolicyId, flatten, quantity_of}
-use types.{LockedTransferDatum, TransferDatum}
-use utils.{
-  get_inputs_from_sc, get_outputs_to_sc, get_own_hash, must_be_signed_by,
+use types.{
+  LockedTransferDatum, LockedTransferManagerSpendRedeemer,
+  LockedTransferManagerWithdrawRedeemer,
 }
+use utils.{get_inputs_from_sc, get_own_hash, is_output_to_sc, must_be_signed_by}
 
-type Redeemer {
-  withdrawIndex: Int,
-}
-
-validator(custodialAdminAddress: Address) {
-  fn minter(datum: LockedTransferDatum, redeemer: Redeemer, ctx: ScriptContext) {
-    when ctx.purpose is {
-      Spend(_) -> {
-        let ownScriptHash = get_own_hash(ctx.purpose, ctx.transaction.inputs)
-
-        expect Some(withdrawScript) =
-          list.at(ctx.transaction.withdrawals, redeemer.withdrawIndex)
-        when withdrawScript is {
-          Pair(Inline(ScriptCredential(script)), _amnt) ->
-            script == ownScriptHash
-          _ -> False
-        }
-      }
-      WithdrawFrom(withdrawStakeCredential) -> {
-        expect Inline(ScriptCredential(ownScriptHash)) = withdrawStakeCredential
-        and {
-          must_be_signed_by(ctx.transaction, custodialAdminAddress),
-          areAllInputTokensToTransferManager(
-            ctx.transaction.inputs,
-            ctx.transaction.outputs,
-            datum.tokenPolicyId,
-            datum.tokenAssetName,
-            datum.tranferManagerScriptHash,
-            ownScriptHash,
-          ),
-        }
-      }
+validator locked_transfer_manager(custodialAdminAddress: Address) {
+  spend(
+    _datumOpt: Option<Data>,
+    redeemer: LockedTransferManagerSpendRedeemer,
+    input: OutputReference,
+    self: Transaction,
+  ) {
+    let ownScriptHash = get_own_hash(input, self.inputs)
+    expect Some(withdrawScript) =
+      list.at(self.withdrawals, redeemer.withdrawIndex)
+    when withdrawScript is {
+      Pair(Script(scriptHash), _amnt) -> scriptHash == ownScriptHash
       _ -> False
     }
   }
+
+  withdraw(
+    redeemer: LockedTransferManagerWithdrawRedeemer,
+    credential: Credential,
+    self: Transaction,
+  ) {
+    expect Script(ownScriptHash) = credential
+    let lockedTransferManagerInputs =
+      get_inputs_from_sc(self.inputs, ownScriptHash)
+    let actualInputTotalTokens =
+      foldl(
+        lockedTransferManagerInputs,
+        0,
+        fn(input, result) {
+          expect InlineDatum(input_datum) = input.output.datum
+          expect lockedDatum: LockedTransferDatum = input_datum
+          //All inputs must have same token
+          expect
+            lockedDatum.tranferManagerScriptHash == redeemer.tranferManagerScriptHash && lockedDatum.tokenAssetName == redeemer.tokenAssetName
+          quantity_of(
+            input.output.value,
+            redeemer.tranferManagerScriptHash,
+            redeemer.tokenAssetName,
+          ) + result
+        },
+      )
+    and {
+      must_be_signed_by(self, custodialAdminAddress),
+      validate_unlock_and_change_outputs(
+        self.outputs,
+        ownScriptHash,
+        redeemer.tokenAssetName,
+        actualInputTotalTokens,
+        redeemer.unlockedTokensAmount,
+        redeemer.unlockingOutputIndex,
+        redeemer.changeOutputIndex,
+        redeemer.tranferManagerScriptHash,
+        redeemer.newUserStakeCredential,
+        redeemer.changeUserStakeCredential,
+      ),
+    }
+  }
+
+  else(_) {
+    fail
+  }
 }
 
-fn areAllInputTokensToTransferManager(
-  inputs: List<Input>,
+fn validate_unlock_and_change_outputs(
   outputs: List<Output>,
-  tokenPolicyId: PolicyId,
+  lockedTransferManagerScriptHash: ByteArray,
   tokenAssetName: AssetName,
-  tranferManagerScriptHash: Hash<Blake2b_224, Script>,
-  ownScriptHash: Hash<Blake2b_224, Script>,
+  actualInputTotalTokens: Int,
+  unlockedTokensAmount: Int,
+  unlockingOutputIndex: Int,
+  changeOutputIndex: Int,
+  transferManagerScriptHash: ByteArray,
+  newUserStakeCredential: StakeCredential,
+  changeUserStakeCredential: StakeCredential,
 ) {
-  let inputFromThisSC = get_inputs_from_sc(inputs, ownScriptHash)
-  let outputsToTransferManager =
-    get_outputs_to_sc(outputs, tranferManagerScriptHash)
-  let tokensAmountFromThisSC =
-    foldl(
-      inputFromThisSC,
-      0,
-      fn(input, result) {
-        quantity_of(input.output.value, tokenPolicyId, tokenAssetName) + result
-      },
-    )
-  let tokensAmountToTransferManager =
-    foldl(
-      outputsToTransferManager,
-      0,
-      fn(output, result) {
-        let output_datum_dos_checks = {
-          expect InlineDatum(output_datum) = output.datum
-          expect parsedOutputDatum: TransferDatum = output_datum
-          and {
-            parsedOutputDatum == TransferDatum { i: 0 },
-            //dos protection
-            length(flatten(output.value)) <= 5,
-          }
-        }
-        //Throw error if datum and dos are not valid
-        expect output_datum_dos_checks
-        quantity_of(output.value, tokenPolicyId, tokenAssetName) + result
-      },
-    )
+  let change = actualInputTotalTokens - unlockedTokensAmount
 
-  tokensAmountFromThisSC == tokensAmountToTransferManager
+  expect Some(unlockingOutput) = list.at(outputs, unlockingOutputIndex)
+  expect Some(unlockingOutputStakeCredential) =
+    unlockingOutput.address.stake_credential
+  expect Some(changeOutput) = list.at(outputs, changeOutputIndex)
+  expect InlineDatum(change_output_datum) = changeOutput.datum
+  expect changeLockingDatum: LockedTransferDatum = change_output_datum
+
+  let isUnlockingOutputValid = and {
+      //We don't check the datum because we don't use it but it exists to be CIP-113 compliant
+      is_output_to_sc(unlockingOutput, transferManagerScriptHash),
+      unlockingOutputStakeCredential == newUserStakeCredential,
+      quantity_of(
+        unlockingOutput.value,
+        transferManagerScriptHash,
+        tokenAssetName,
+      ) == unlockedTokensAmount,
+      //dos protection
+      length(flatten(unlockingOutput.value)) <= 5,
+    }
+  let isChangeOutputValid = and {
+      is_output_to_sc(changeOutput, lockedTransferManagerScriptHash),
+      quantity_of(changeOutput.value, transferManagerScriptHash, tokenAssetName) == change,
+      changeLockingDatum == LockedTransferDatum {
+        ownerStakeCredential: changeUserStakeCredential,
+        tranferManagerScriptHash: transferManagerScriptHash,
+        tokenAssetName,
+      },
+      //dos protection
+      length(flatten(changeOutput.value)) <= 5,
+    }
+  and {
+    isUnlockingOutputValid,
+    or {
+      change == 0,
+      and {
+        change > 0,
+        isChangeOutputValid,
+      },
+    },
+  }
 }
