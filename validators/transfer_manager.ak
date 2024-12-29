@@ -29,29 +29,29 @@ validator transfer_manager(
     self: Transaction,
   ) {
     let securityAssetName = adminAssetName
-    expect Some(issuerRefInput) =
-      list.at(self.reference_inputs, redeemer.issuerTokenRefInputIndex)
     expect Some(transferManagerOutput) =
       list.at(self.outputs, redeemer.transferManagerOutputIndex)
     and {
-      //TODO SHOULDN'T WE REDUCE remainingSecurityTokens and check that it's possible to do that?
-      //We don't check the datum because we don't use it but it exists to be CIP-113 compliant
-      //TODO FIX AUTH PROCESS WITH LATEST 
-      must_be_signed_by_stake_credential(self, redeemer.issuerStakeCredential),
-      is_user_allowed(
-        issuerRefInput,
-        redeemer.issuerStakeCredential,
-        issuerManagerHash,
-        issuerAssetName,
-      ),
       //No burning, only minting
-      redeemer.transferAmount > 0,
+      redeemer.mintAmount > 0,
+      //TODO SHOULDN'T WE REDUCE remainingSecurityTokens and check that it's possible to do that?
+      //The node must belong to the issuers ordered list
+      ordered.is_member(
+        issuer_node,
+        redeemer.issuer_key,
+        node_address,
+        issuer_linked_list_address,
+      ),
+      //Must be signed by this issue
+      must_be_signed_by_credential(self, issuer_node.data.issuerCredential),
       //Must mint the correct amount
-      quantity_of(self.mint, policy_id, securityAssetName) == redeemer.transferAmount,
+      quantity_of(self.mint, policy_id, securityAssetName) == redeemer.mintAmount,
       //In output exactly how much you have minted
-      quantity_of(transferManagerOutput.value, policy_id, securityAssetName) == redeemer.transferAmount,
-      //Must always go to the smart token spend validator
-      is_output_to_sc(transferManagerOutput, smartTokenSpendScriptHash),
+      quantity_of(transferManagerOutput.value, policy_id, securityAssetName) == redeemer.mintAmount,
+      //Goes to the smart tokens spend script
+      transferManagerOutput.address.payment_credential == Script(
+        smartTokensSpendScriptHash,
+      ),
       //Only ADA and this token
       length(flatten(transferManagerOutput.value)) <= 2,
     }
@@ -96,7 +96,7 @@ validator transfer_manager(
             Inline(Script(locked_manager_script_hash)),
           ) {
             and {
-              //The admin node must belong to the user state ordered list
+              //The admin node must belong to the admin ordered list
               ordered.is_member(
                 admin_node,
                 redeemer.admin_key,
