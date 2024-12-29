@@ -23,19 +23,13 @@ validator locked_tokens(
   stateManagerHash: PolicyId,
   lockedTransferManagerHash: ByteArray,
 ) {
-  spend(
-    _datumOpt: Option<TransferManagerDatum>,
-    redeemer: TransferManagerSpendRedeemer,
-    input: OutputReference,
+  withdraw(
+    redeemer: TransferManagerWithdrawRedeemer,
+    credential: Credential,
     self: Transaction,
   ) {
-    let ownScriptHash = get_own_hash(input, self.inputs)
-    expect Some(withdrawScript) =
-      list.at(self.withdrawals, redeemer.withdrawIndex)
-    when withdrawScript is {
-      Pair(Script(scriptHash), _amnt) -> scriptHash == ownScriptHash
-      _ -> False
-    }
+    todo
+    //Return true only if the admin is spending all the inputs with this
   }
 
   else(_) {
