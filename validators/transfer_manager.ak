@@ -17,7 +17,7 @@ use utils.{
 
 validator transfer_manager(
   smartTokenSpendScriptHash: ByteArray,
-  lockedManagerSpendScriptHash: ByteArray,
+  locked_manager_script_hash: ByteArray,
   issuerManagerHash: PolicyId,
   issuerAssetName: AssetName,
   adminManagerHash: PolicyId,
@@ -62,7 +62,102 @@ validator transfer_manager(
     credential: Credential,
     self: Transaction,
   ) {
-    todo
+    let securityAssetName = adminAssetName
+    expect Script(security_policy_id) = credential
+
+    //TODO we can probably make this part more efficient
+    let inputs_with_token =
+      list.filter(
+        self.inputs,
+        fn(input) {
+          quantity_of(input.output.value, security_policy_id, securityAssetName) > 0
+        },
+      )
+
+    let outputs_with_token =
+      list.filter(
+        self.outputs,
+        fn(output) {
+          quantity_of(output.value, security_policy_id, securityAssetName) > 0
+        },
+      )
+
+    let all_token_inputs_can_be_spent =
+      list.indexed_foldr(
+        inputs_with_token,
+        True,
+        fn(index, input, result) {
+          //As all inputs must return True, if any of previous input returned False, then fail
+          //The last input is not checked but will return its value at the end, so if False withdraw will fail
+          expect result
+
+          //If input is coming from the locked manager that only admin can unlock
+          if input.output.address.stake_credential == Some(
+            Inline(Script(locked_manager_script_hash)),
+          ) {
+            and {
+              //The admin node must belong to the user state ordered list
+              ordered.is_member(
+                admin_node,
+                redeemer.admin_key,
+                node_address,
+                admin_linked_list_address,
+              ),
+              //Must be signed by this admin
+              must_be_signed_by_credential(
+                self,
+                admin_node.data.adminCredential,
+              ),
+            }
+          } else {
+            and {
+              //Overall transfers of this tokens must NOT be paused
+              smart_token_node.transfers_paused == False,
+              //Must be signed by the user owning this utxo
+              must_be_signed_by_credential(
+                self,
+                input.output.address.stake_credential,
+              ),
+              //The user node must belong to the user state ordered list
+              ordered.is_member(
+                user_state_node,
+                redeemer.user_key,
+                node_address,
+                user_state_linked_list_address,
+              ),
+              //User has done KYC properly
+              user_state_node.data.whitelisted == True,
+              //User is not blacklisted
+              user_state_node.data.blacklisted == False,
+            }
+          }
+        },
+      )
+
+    let all_token_outputs_go_to_smart_tokens_spend_script =
+      list.indexed_foldr(
+        outputs_with_token,
+        True,
+        fn(index, output, result) {
+          //As all outputs must return True, if any of previous input returned False, then fail
+          //The last output is not checked but will return its value at the end, so if False withdraw will fail
+          expect result
+
+          and {
+            //Stays in the smart tokens spend script
+            output.address.payment_credential == Script(
+              smartTokensSpendScriptHash,
+            ),
+            //DOS protection
+            length(flatten(output.value)) <= 21,
+          }
+        },
+      )
+
+    and {
+      all_token_inputs_can_be_spent,
+      all_token_outputs_go_to_smart_tokens_spend_script,
+    }
   }
 
   else(_) {
