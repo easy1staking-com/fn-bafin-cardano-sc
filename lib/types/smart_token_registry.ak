@@ -1,8 +1,6 @@
 use cardano/address.{Credential}
 
 pub type RegistryData {
-  token_policy_id: ByteArray,
-  token_asset_name: ByteArray,
   //TODO HERE FIXED FIELDS OF CIP113
   owner_credential: Credential,
   user_state_linked_list_script_hash: ByteArray,

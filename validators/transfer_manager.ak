@@ -15,6 +15,7 @@ use utils.{must_be_signed_by_credential}
 validator transfer_manager(
   smart_tokens_spend_script_hash: ByteArray,
   smart_tokens_linked_list_script_hash: ByteArray,
+  smart_tokens_linked_list_asset_name: ByteArray,
   security_asset_name: ByteArray,
 ) {
   mint(
@@ -63,8 +64,11 @@ validator transfer_manager(
         prev_issuer_node_ref_input.output,
       ),
       //Must be related to this token
-      registry_data.token_policy_id == policy_id,
-      registry_data.token_asset_name == security_asset_name,
+      quantity_of(
+        smart_tokens_node_ref_input.output.value,
+        smart_tokens_linked_list_script_hash,
+        smart_tokens_linked_list_asset_name,
+      ) > 0,
       //Must be signed by the minter
       must_be_signed_by_credential(self, power_user_data.credential),
       if minted_amount > 0 {
@@ -120,8 +124,11 @@ validator transfer_manager(
           prev_smart_tokens_node_ref_input.output,
         ),
         //Must be related to this token
-        registry_data.token_policy_id == security_policy_id,
-        registry_data.token_asset_name == security_asset_name,
+        quantity_of(
+          smart_tokens_node_ref_input.output.value,
+          smart_tokens_linked_list_script_hash,
+          smart_tokens_linked_list_asset_name,
+        ) > 0,
         //Overall transfers of this tokens must NOT be paused
         registry_data.transfers_paused == False,
       }
