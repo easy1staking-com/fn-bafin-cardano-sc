@@ -1,9 +1,8 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
+use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
-use cardano/address.{
-  Address, Credential, Inline, Script, StakeCredential, VerificationKey,
-}
+use cardano/address.{Address, Inline, Script, StakeCredential, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -12,9 +11,12 @@ use types/config.{ConfigDatum}
 
 pub fn must_be_signed_by_credential(
   transaction: Transaction,
-  credential: Credential,
+  credential_hash: ByteArray,
 ) {
-  todo
+  or {
+    list.has(transaction.extra_signatories, credential_hash),
+    pairs.has_key(transaction.withdrawals, Script(credential_hash)),
+  }
 }
 
 pub fn get_config(

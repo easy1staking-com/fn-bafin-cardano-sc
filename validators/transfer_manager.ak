@@ -4,12 +4,12 @@ use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, flatten, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
-use types/power_user.{PowerUser}
+use types/power_users.{PowerUser}
 use types/smart_token_registry.{RegistryData}
 use types/transfer_manager.{
   TransferManagerMintRedeemer, TransferManagerWithdrawRedeemer,
 } as tm
-use types/user_state.{UserState}
+use types/user_states.{UserState}
 use utils.{must_be_signed_by_credential}
 
 validator transfer_manager(
@@ -43,6 +43,7 @@ validator transfer_manager(
       list.at(self.reference_inputs, redeemer.issuer_node_ref_input_index)
     expect InlineDatum(issuer_node_datum) = issuer_node_ref_input.output.datum
     expect parsed_issuer_node_datum: NodeDatum = issuer_node_datum
+    expect Key(power_user_credential_hash) = parsed_issuer_node_datum.key
     expect power_user_data: PowerUser = parsed_issuer_node_datum.data
     expect Some(prev_issuer_node_ref_input) =
       list.at(self.reference_inputs, redeemer.prev_issuer_node_ref_input_index)
@@ -70,7 +71,7 @@ validator transfer_manager(
         smart_tokens_linked_list_asset_name,
       ) > 0,
       //Must be signed by the minter
-      must_be_signed_by_credential(self, power_user_data.credential),
+      must_be_signed_by_credential(self, power_user_credential_hash),
       if minted_amount > 0 {
         and {
           //Must be a minter
@@ -200,7 +201,7 @@ validator transfer_manager(
             ),
             parsed_user_node_datum.key == Key { key: input_credential_hash },
             //Must be signed by the user owning this utxo
-            must_be_signed_by_credential(self, stake_cred),
+            must_be_signed_by_credential(self, input_credential_hash),
             //User has done KYC properly
             user_state.is_kyced == True,
             //User is not blacklisted

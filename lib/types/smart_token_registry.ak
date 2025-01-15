@@ -1,7 +1,7 @@
 use cardano/address.{Credential}
 
 pub type RegistryData {
-  //TODO HERE FIXED FIELDS OF CIP113
+  //TODO HERE STANDARD FIELDS OF CIP113
   owner_credential: Credential,
   user_state_linked_list_script_hash: ByteArray,
   power_user_linked_list_script_hash: ByteArray,
