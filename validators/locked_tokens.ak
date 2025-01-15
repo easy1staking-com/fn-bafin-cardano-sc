@@ -1,35 +1,38 @@
-use aiken/collection/list.{foldl, length}
-use cardano/address.{Address, Credential, Inline, Script, StakeCredential}
-use cardano/assets.{AssetName, PolicyId, flatten, quantity_of}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
-use common.{is_user_allowed}
-use types/datum.{LockedTransferDatum, StateManagerDatum, TransferManagerDatum}
-use types/redeemer.{
-  LockTokens, Transfer, TransferManagerMintRedeemer,
-  TransferManagerSpendRedeemer, TransferManagerWithdrawRedeemer, TransferOutput,
-}
-use utils.{
-  all_sc_inputs_from_same_user, get_inputs_from_sc, get_own_hash,
-  is_output_to_sc, must_be_signed_by_stake_credential,
-}
+use aiken/collection/list
+use aiken_design_patterns/linked_list/ordered.{NodeDatum}
+use cardano/address.{Credential}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use types/locked_tokens.{LockedTokensWithdrawRedeemer}
+use types/power_user.{PowerUser}
+use utils.{must_be_signed_by_credential}
 
-validator locked_tokens(
-  issuerManagerHash: PolicyId,
-  issuerAssetName: AssetName,
-  adminManagerHash: PolicyId,
-  adminAssetName: AssetName,
-  stateManagerHash: PolicyId,
-  lockedTransferManagerHash: ByteArray,
+validator locked_tokens_withdraw(
+  power_user_linked_list_script_hash: ByteArray,
 ) {
   withdraw(
-    redeemer: TransferManagerWithdrawRedeemer,
-    credential: Credential,
+    redeemer: LockedTokensWithdrawRedeemer,
+    _credential: Credential,
     self: Transaction,
   ) {
-    todo
-    //Return true only if the admin is spending all the inputs with this
+    expect Some(admin_node_ref_input) =
+      list.at(self.reference_inputs, redeemer.admin_node_ref_input_index)
+    expect InlineDatum(admin_node_datum) = admin_node_ref_input.output.datum
+    expect parsed_admin_node_datum: NodeDatum = admin_node_datum
+    expect power_user_data: PowerUser = parsed_admin_node_datum.data
+    expect Some(prev_admin_node_ref_input) =
+      list.at(self.reference_inputs, redeemer.prev_admin_node_ref_input_index)
+    and {
+      //The node must belong to the admin list
+      ordered.prove_is_member(
+        power_user_linked_list_script_hash,
+        parsed_admin_node_datum.key,
+        prev_admin_node_ref_input.output,
+      ),
+      //Must be a admin
+      power_user_data.is_admin,
+      //Must be signed by this admin
+      must_be_signed_by_credential(self, power_user_data.credential),
+    }
   }
 
   else(_) {

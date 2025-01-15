@@ -1,9 +1,37 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/crypto.{VerificationKeyHash}
-use cardano/address.{Address, Inline, Script, StakeCredential, VerificationKey}
+use cardano/address.{
+  Address, Credential, Inline, Script, StakeCredential, VerificationKey,
+}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
-use cardano/transaction.{Input, Output, OutputReference, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
+use types/config.{ConfigDatum}
+
+pub fn must_be_signed_by_credential(
+  transaction: Transaction,
+  credential: Credential,
+) {
+  todo
+}
+
+pub fn get_config(
+  configRefInput: Input,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
+) {
+  expect
+    quantity_of(
+      configRefInput.output.value,
+      configNFTPolicyId,
+      configNFTAssetName,
+    ) > 0
+  expect InlineDatum(outputDatum) = configRefInput.output.datum
+  expect parsedDatum: ConfigDatum = outputDatum
+  parsedDatum
+}
 
 pub fn must_be_signed_by_stake_credential(
   transaction: Transaction,
