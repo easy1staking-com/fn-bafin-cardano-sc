@@ -18,7 +18,7 @@ validator locked_tokens_withdraw(
       list.at(self.reference_inputs, redeemer.admin_node_ref_input_index)
     expect InlineDatum(admin_node_datum) = admin_node_ref_input.output.datum
     expect parsed_admin_node_datum: NodeDatum = admin_node_datum
-    expect Key(credential_hash) = parsed_admin_node_datum.key
+    expect Key(admin_credential_hash) = parsed_admin_node_datum.key
     expect power_user_data: PowerUser = parsed_admin_node_datum.data
     expect Some(prev_admin_node_ref_input) =
       list.at(self.reference_inputs, redeemer.prev_admin_node_ref_input_index)
@@ -32,7 +32,7 @@ validator locked_tokens_withdraw(
       //Must be a admin
       power_user_data.is_admin,
       //Must be signed by this admin
-      must_be_signed_by_credential(self, credential_hash),
+      must_be_signed_by_credential(self, admin_credential_hash),
     }
   }
 

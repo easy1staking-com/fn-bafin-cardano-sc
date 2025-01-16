@@ -220,30 +220,30 @@ test all_sc_inputs_from_same_user_fail() fail {
 //   )
 // }
 
-fn build_input_with_stake_credential_from_user(
-  stakeCredential: StakeCredential,
-  userPaymentCredential: ByteArray,
-) {
-  let userTokenPolicyId = "TEST_POLICY"
-  let userTokenAssetName = "TEST_ASSET"
-  let inputOutputReference =
-    OutputReference { transaction_id: "123456789", output_index: 3 }
-  let inputAddress =
-    Address {
-      payment_credential: address.VerificationKey(userPaymentCredential),
-      stake_credential: Some(stakeCredential),
-    }
-  let inputOutput =
-    Output {
-      address: inputAddress,
-      value: from_asset(userTokenPolicyId, userTokenAssetName, 1),
-      datum: NoDatum,
-      reference_script: None,
-    }
-  let input =
-    Input { output_reference: inputOutputReference, output: inputOutput }
-  input
-}
+// fn build_input_with_stake_credential_from_user(
+//   stakeCredential: StakeCredential,
+//   userPaymentCredential: ByteArray,
+// ) {
+//   let userTokenPolicyId = "TEST_POLICY"
+//   let userTokenAssetName = "TEST_ASSET"
+//   let inputOutputReference =
+//     OutputReference { transaction_id: "123456789", output_index: 3 }
+//   let inputAddress =
+//     Address {
+//       payment_credential: address.VerificationKey(userPaymentCredential),
+//       stake_credential: Some(stakeCredential),
+//     }
+//   let inputOutput =
+//     Output {
+//       address: inputAddress,
+//       value: from_asset(userTokenPolicyId, userTokenAssetName, 1),
+//       datum: NoDatum,
+//       reference_script: None,
+//     }
+//   let input =
+//     Input { output_reference: inputOutputReference, output: inputOutput }
+//   input
+// }
 
 fn build_input_with_stake_credential_from_sc(
   stakeCredential: StakeCredential,

@@ -9,3 +9,27 @@ pub type PowerUser {
   can_kyc: Bool,
   can_blacklist: Bool,
 }
+
+pub type SpendRedeemer {
+  StateTransition
+  ModifyUserStatus {
+    own_output_index: Int,
+    node_nft_asset_name: ByteArray,
+    wanted_user_state: PowerUser,
+  }
+}
+
+pub type MintRedeemer {
+  Init
+  Deinit
+  AddUser {
+    new_user_status_key: ByteArray,
+    appended_node_output_index: Int,
+    anchor_node_output_index: Int,
+  }
+  RemoveUser {
+    user_status_key: ByteArray,
+    removed_node_input_index: Int,
+    anchor_node_input_index: Int,
+  }
+}

@@ -4,10 +4,7 @@ use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use cardano/address.{Address, Inline, Script, StakeCredential, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
-use types/config.{ConfigDatum}
+use cardano/transaction.{Input, Output, OutputReference, Transaction}
 
 pub fn must_be_signed_by_credential(
   transaction: Transaction,
@@ -17,22 +14,6 @@ pub fn must_be_signed_by_credential(
     list.has(transaction.extra_signatories, credential_hash),
     pairs.has_key(transaction.withdrawals, Script(credential_hash)),
   }
-}
-
-pub fn get_config(
-  configRefInput: Input,
-  configNFTPolicyId: ByteArray,
-  configNFTAssetName: ByteArray,
-) {
-  expect
-    quantity_of(
-      configRefInput.output.value,
-      configNFTPolicyId,
-      configNFTAssetName,
-    ) > 0
-  expect InlineDatum(outputDatum) = configRefInput.output.datum
-  expect parsedDatum: ConfigDatum = outputDatum
-  parsedDatum
 }
 
 pub fn must_be_signed_by_stake_credential(
