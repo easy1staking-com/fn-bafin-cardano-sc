@@ -22,10 +22,14 @@ pub type MintRedeemer {
     new_users_status_key: ByteArray,
     appended_node_output_index: Int,
     anchor_node_output_index: Int,
+    power_user_node_ref_input_index: Int,
+    power_useranchor_node_ref_input_index: Int,
   }
   RemoveUser {
     users_status_key: ByteArray,
     removed_node_input_index: Int,
     anchor_node_input_index: Int,
+    power_user_node_ref_input_index: Int,
+    power_useranchor_node_ref_input_index: Int,
   }
 }

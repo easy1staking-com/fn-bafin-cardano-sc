@@ -110,8 +110,6 @@ validator spend(
 validator mint(
   init_input_out_ref: OutputReference,
   power_users_mint_script_hash: ByteArray,
-  power_user_node_ref_input_index: Int,
-  power_useranchor_node_ref_input_index: Int,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
@@ -131,6 +129,8 @@ validator mint(
         new_users_status_key,
         inserted_node_output_index,
         anchor_node_output_index,
+        power_user_node_ref_input_index,
+        power_useranchor_node_ref_input_index,
       ) -> {
         expect Some(power_userref_input) =
           list.at(self.reference_inputs, power_user_node_ref_input_index)
@@ -173,6 +173,8 @@ validator mint(
         users_status_key,
         removed_node_input_index,
         anchor_node_input_index,
+        power_user_node_ref_input_index,
+        power_useranchor_node_ref_input_index,
       ) -> {
         expect Some(power_userref_input) =
           list.at(self.reference_inputs, power_user_node_ref_input_index)

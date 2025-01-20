@@ -1,11 +1,46 @@
 # Bafin compliant securities
 
 This set of smart contracts allow to have Bafin compliant security tokens on Cardano.
-It follows the latest version of CIP-113 made by Michele Nuzzi and Matteo Coppola:
+It follows the latest version of CIP-113 made by Michele Nuzzi, Matteo Coppola and Philip Desarro:
 https://github.com/HarmonicLabs/CIPs/tree/master/CIP-meta-assets%20(ERC20-like%20assets)
 
 Bafin requires the user's security tokens to be freezable and to lock them eventually when the user requests to remove his ownership.
 
+## Actors
+
+Different users cover different roles:
+* Owner: normally BaFin, owns the token
+* Power User: set by the owner, can be:
+    * Admin: can add/remove users' status from the UsersStatus linked list and can unlock locked tokens
+    * Minter: can mint new tokens up to the set max limit
+    * Burner: can burn tokens
+    * Pauser: can stop/resume all transfers at once
+    * Blacklister: can blacklist a user
+    * KYCer: can confirm that the user is KYCed
+* User: Any normal user (wallet or smart contract) that is CIP-113 and that must be KYCed and not blacklisted
+
+## How it works
+TODO
+
+## How to compile
+The order to compile the contracts applying the proper validator parameters is the following:
+1) Decide the owner credential hash, the token AssetName and retrieve the CIP-113.spend script hash
+2) Compile power_users.mint
+3) Compile power_users.spend
+4) Compile users_status.mint
+5) Compile users_status.spend
+6) Compile global_state.spend
+7) Compile global_state.mint
+8) Compile locked_tokens
+9) Create the one-shot GlobalState utxo with the unique NFT
+10) Compile transfer_manager
+
+## Authors
+
+Matteo Coppola, as part of Finest team
+
+# -------------------------
+# OLD INFORMATION TO DELETE
 ## Actors
 
 The flow implies the need of the following actors:
