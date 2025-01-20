@@ -2,6 +2,7 @@ use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
+use aiken/primitive/bytearray
 use cardano/address.{Address, Inline, Script, StakeCredential, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
 use cardano/transaction.{Input, Output, OutputReference, Transaction}
@@ -14,6 +15,12 @@ pub fn must_be_signed_by_credential(
     list.has(transaction.extra_signatories, credential_hash),
     pairs.has_key(transaction.withdrawals, Script(credential_hash)),
   }
+}
+
+pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
+  crypto.sha2_256(
+    bytearray.push(outputRef.transaction_id, outputRef.output_index),
+  )
 }
 
 pub fn must_be_signed_by_stake_credential(

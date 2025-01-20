@@ -3,9 +3,11 @@ use aiken/collection/list.{length}
 use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, flatten, quantity_of, tokens}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
+use cardano/transaction.{
+  DatumHash, InlineDatum, Input, NoDatum, Output, Transaction,
+}
+use types/global_state.{GlobalState}
 use types/power_users.{PowerUser}
-use types/smart_token_registry.{RegistryData}
 use types/transfer_manager.{
   TransferManagerMintRedeemer, TransferManagerWithdrawRedeemer,
 } as tm
@@ -14,8 +16,9 @@ use utils.{must_be_signed_by_credential}
 
 validator transfer_manager(
   smart_tokens_spend_script_hash: ByteArray,
-  smart_tokens_linked_list_script_hash: ByteArray,
-  smart_tokens_linked_list_asset_name: ByteArray,
+  global_state_nft_policy_id: ByteArray,
+  global_state_nft_asset_name: ByteArray,
+  user_state_linked_list_policy_id: ByteArray,
   security_asset_name: ByteArray,
 ) {
   mint(
@@ -23,22 +26,12 @@ validator transfer_manager(
     policy_id: PolicyId,
     self: Transaction,
   ) {
-    //TODO increment/decrement registry.mintable_amount and ensure it stays >= 0
-    expect Some(smart_tokens_node_ref_input) =
-      list.at(self.reference_inputs, redeemer.smart_tokens_node_ref_input_index)
-    expect InlineDatum(smart_tokens_node_datum) =
-      smart_tokens_node_ref_input.output.datum
-    expect parsed_smart_tokens_node_datum: NodeDatum = smart_tokens_node_datum
-    expect registry_data: RegistryData = parsed_smart_tokens_node_datum.data
-    expect Some(prev_smart_tokens_node_ref_input) =
-      list.at(
-        self.reference_inputs,
-        redeemer.prev_smart_tokens_node_ref_input_index,
-      )
-
-    expect Some(smart_tokens_spend_script_output) =
-      list.at(self.outputs, redeemer.smart_tokens_spend_script_output_index)
     let minted_amount = quantity_of(self.mint, policy_id, security_asset_name)
+    expect Some(global_state_input) =
+      list.at(self.reference_inputs, redeemer.global_state_input_index)
+    expect InlineDatum(global_state_datum) = global_state_input.output.datum
+    expect GlobalState { power_user_linked_list_policy_id, .. } =
+      global_state_datum
     expect Some(issuer_node_ref_input) =
       list.at(self.reference_inputs, redeemer.issuer_node_ref_input_index)
     expect InlineDatum(issuer_node_datum) = issuer_node_ref_input.output.datum
@@ -48,31 +41,27 @@ validator transfer_manager(
     expect Some(prev_issuer_node_ref_input) =
       list.at(self.reference_inputs, redeemer.prev_issuer_node_ref_input_index)
     and {
-      //Only 1 token unit minted
+      //Only 1 token AssetName minted
       size(tokens(self.mint, policy_id)) == 1,
       //Must mint the correct amount
       minted_amount == redeemer.minted_amount,
-      //Must belong to registry
-      ordered.prove_is_member(
-        smart_tokens_linked_list_script_hash,
-        parsed_smart_tokens_node_datum.key,
-        prev_smart_tokens_node_ref_input.output,
-      ),
+      //Global State input must have the correct NFT
+      quantity_of(
+        global_state_input.output.value,
+        global_state_nft_policy_id,
+        global_state_nft_asset_name,
+      ) > 0,
       //The node must belong to the poweruser list
       ordered.prove_is_member(
-        registry_data.power_user_linked_list_script_hash,
+        power_user_linked_list_policy_id,
         parsed_issuer_node_datum.key,
         prev_issuer_node_ref_input.output,
       ),
-      //Must be related to this token
-      quantity_of(
-        smart_tokens_node_ref_input.output.value,
-        smart_tokens_linked_list_script_hash,
-        smart_tokens_linked_list_asset_name,
-      ) > 0,
       //Must be signed by the minter
       must_be_signed_by_credential(self, power_user_credential_hash),
       if minted_amount > 0 {
+        expect Some(smart_tokens_spend_script_output) =
+          list.at(self.outputs, redeemer.smart_tokens_spend_script_output_index)
         and {
           //Must be a minter
           power_user_data.is_minter,
@@ -105,36 +94,23 @@ validator transfer_manager(
   ) {
     expect Script(security_policy_id) = credential
 
-    expect Some(smart_tokens_node_ref_input) =
-      list.at(self.reference_inputs, redeemer.smart_tokens_node_ref_input_index)
-    expect InlineDatum(smart_tokens_node_datum) =
-      smart_tokens_node_ref_input.output.datum
-    expect parsed_smart_tokens_node_datum: NodeDatum = smart_tokens_node_datum
-    expect registry_data: RegistryData = parsed_smart_tokens_node_datum.data
-    expect Some(prev_smart_tokens_node_ref_input) =
-      list.at(
-        self.reference_inputs,
-        redeemer.prev_smart_tokens_node_ref_input_index,
-      )
+    expect Some(global_state_ref_input) =
+      list.at(self.reference_inputs, redeemer.global_state_ref_input_index)
+    expect InlineDatum(global_state_datum) = global_state_ref_input.output.datum
+    expect GlobalState { transfers_paused, .. } = global_state_datum
 
     let global_status_ok = and {
-        //The node must belong to the smart tokens registry
-        ordered.prove_is_member(
-          smart_tokens_linked_list_script_hash,
-          parsed_smart_tokens_node_datum.key,
-          prev_smart_tokens_node_ref_input.output,
-        ),
-        //Must be related to this token
+        //Global State must have the correct NFT
         quantity_of(
-          smart_tokens_node_ref_input.output.value,
-          smart_tokens_linked_list_script_hash,
-          smart_tokens_linked_list_asset_name,
+          global_state_ref_input.output.value,
+          global_state_nft_policy_id,
+          global_state_nft_asset_name,
         ) > 0,
-        //Overall transfers of this tokens must NOT be paused
-        registry_data.transfers_paused == False,
+        //Overall transfers of this token must NOT be paused
+        transfers_paused == False,
       }
 
-    //Collect unique stake_cred that must be verified
+    //Collect unique input stake_cred that must be verified
     let inputs_user_stake_cred =
       list.unique(
         list.foldr(
@@ -195,7 +171,7 @@ validator transfer_manager(
           and {
             //The node must belong to the user state list
             ordered.prove_is_member(
-              registry_data.user_state_linked_list_script_hash,
+              user_state_linked_list_policy_id,
               parsed_user_node_datum.key,
               prev_user_node_ref_input.output,
             ),
@@ -224,7 +200,11 @@ validator transfer_manager(
             output.address.payment_credential == Script(
               smart_tokens_spend_script_hash,
             ),
-            //TODO DO WE NEED A CHECK ON THE DATUM SIZE?
+            //Datum must not be of type hash to avoid generating a too big tx
+            when output.datum is {
+              DatumHash(_hash) -> False
+              _ -> True
+            },
             //DOS protection
             length(flatten(output.value)) <= 21,
           }
