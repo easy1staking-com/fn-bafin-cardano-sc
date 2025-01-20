@@ -11,14 +11,14 @@ use types/power_users.{PowerUser}
 use types/transfer_manager.{
   TransferManagerMintRedeemer, TransferManagerWithdrawRedeemer,
 } as tm
-use types/user_states.{UserState}
+use types/users_status.{UserStatus}
 use utils.{must_be_signed_by_credential}
 
 validator transfer_manager(
   smart_tokens_spend_script_hash: ByteArray,
-  global_state_nft_policy_id: ByteArray,
+  global_state_mint_script_hash: ByteArray,
   global_state_nft_asset_name: ByteArray,
-  user_state_linked_list_policy_id: ByteArray,
+  users_status_mint_script_hash: ByteArray,
   security_asset_name: ByteArray,
 ) {
   mint(
@@ -48,7 +48,7 @@ validator transfer_manager(
       //Global State input must have the correct NFT
       quantity_of(
         global_state_input.output.value,
-        global_state_nft_policy_id,
+        global_state_mint_script_hash,
         global_state_nft_asset_name,
       ) > 0,
       //The node must belong to the PowerUser list
@@ -103,7 +103,7 @@ validator transfer_manager(
         //Global State must have the correct NFT
         quantity_of(
           global_state_ref_input.output.value,
-          global_state_nft_policy_id,
+          global_state_mint_script_hash,
           global_state_nft_asset_name,
         ) > 0,
         //Overall transfers of this token must NOT be paused
@@ -161,7 +161,7 @@ validator transfer_manager(
             list.at(self.reference_inputs, action.user_node_ref_input_index)
           expect InlineDatum(user_node_datum) = user_node_ref_input.output.datum
           expect parsed_user_node_datum: NodeDatum = user_node_datum
-          expect user_state: UserState = parsed_user_node_datum.data
+          expect user_state: UserStatus = parsed_user_node_datum.data
           expect Some(prev_user_node_ref_input) =
             list.at(
               self.reference_inputs,
@@ -171,7 +171,7 @@ validator transfer_manager(
           and {
             //The node must belong to the user state list
             ordered.prove_is_member(
-              user_state_linked_list_policy_id,
+              users_status_mint_script_hash,
               parsed_user_node_datum.key,
               prev_user_node_ref_input.output,
             ),

@@ -87,12 +87,13 @@ validator mint(
       ) -> {
         expect Some(inserted_node_output) =
           list.at(self.outputs, inserted_node_output_index)
-        expect InlineDatum(power_user_status_datum) = inserted_node_output.datum
-        expect parsed_power_user_status_datum: NodeDatum =
-          power_user_status_datum
+        expect InlineDatum(power_users_status_datum) =
+          inserted_node_output.datum
+        expect parsed_power_users_status_datum: NodeDatum =
+          power_users_status_datum
         //Datum must be of correct type
-        expect _parsed_user_status_data: PowerUser =
-          parsed_power_user_status_datum.data
+        expect _parsed_users_status_data: PowerUser =
+          parsed_power_users_status_datum.data
         and {
           //Must be signed by the power user
           must_be_signed_by_credential(self, owner_credential_hash),
@@ -114,12 +115,13 @@ validator mint(
       ) -> {
         expect Some(inserted_node_output) =
           list.at(self.outputs, removed_node_input_index)
-        expect InlineDatum(power_user_status_datum) = inserted_node_output.datum
-        expect parsed_power_user_status_datum: NodeDatum =
-          power_user_status_datum
+        expect InlineDatum(power_users_status_datum) =
+          inserted_node_output.datum
+        expect parsed_power_users_status_datum: NodeDatum =
+          power_users_status_datum
         //Datum must be of correct type
-        expect _parsed_user_status_data: PowerUser =
-          parsed_power_user_status_datum.data
+        expect _parsed_users_status_data: PowerUser =
+          parsed_power_users_status_datum.data
         and {
           //Must be signed by the power user
           must_be_signed_by_credential(self, owner_credential_hash),

@@ -24,6 +24,8 @@ pub type SecurityInfo {
 }
 
 pub type GlobalState {
+  //Mint hash (policy_id) of the smart token
+  transfer_manager_mint_script_hash: ByteArray,
   //If true, no transfer can be executed
   transfers_paused: Bool,
   //PowerUsers linked list minting policy

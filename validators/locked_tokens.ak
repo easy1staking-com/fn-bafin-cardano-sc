@@ -2,13 +2,11 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Credential}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use types/locked_tokens.{LockedTokensWithdrawRedeemer}
+use types/locked_tokens.{LockedTokensWithdrawRedeemer} as lt
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential}
 
-validator locked_tokens_withdraw(
-  power_user_linked_list_script_hash: ByteArray,
-) {
+validator locked_tokens(power_user_mint_script_hash: ByteArray) {
   withdraw(
     redeemer: LockedTokensWithdrawRedeemer,
     _credential: Credential,
@@ -25,7 +23,7 @@ validator locked_tokens_withdraw(
     and {
       //The node must belong to the admin list
       ordered.prove_is_member(
-        power_user_linked_list_script_hash,
+        power_user_mint_script_hash,
         parsed_admin_node_datum.key,
         prev_admin_node_ref_input.output,
       ),

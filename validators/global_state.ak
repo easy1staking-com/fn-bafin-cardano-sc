@@ -14,10 +14,9 @@ use types/power_users.{PowerUser}
 use types/transfer_manager.{TransferManagerMintRedeemer} as tm
 use utils.{must_be_signed_by_credential}
 
-validator global_state(
+validator mint(
   init_input_out_ref: OutputReference,
   global_state_spend_script_hash: ByteArray,
-  transfer_manager_policy_id: ByteArray,
 ) {
   mint(
     redeemer: GlobalStateMintRedeemer,
@@ -51,6 +50,12 @@ validator global_state(
     }
   }
 
+  else(_) {
+    fail
+  }
+}
+
+validator spend {
   spend(
     datumOpt: Option<GlobalState>,
     redeemer: GlobalStateSpendRedeemer,
@@ -77,7 +82,7 @@ validator global_state(
           list.at(self.redeemers, transfer_manager_mint_redeemer_index)
         expect
           transfer_manager_mint_redeemer_in_tx.1st == Mint(
-            transfer_manager_policy_id,
+            input_datum.transfer_manager_mint_script_hash,
           )
         expect TransferManagerMintRedeemer { minted_amount, .. } =
           transfer_manager_mint_redeemer_in_tx.2nd
@@ -86,6 +91,7 @@ validator global_state(
 
         let expected_datum =
           GlobalState {
+            transfer_manager_mint_script_hash: input_datum.transfer_manager_mint_script_hash,
             transfers_paused: input_datum.transfers_paused,
             power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
             mintable_amount: remaining_amount,
@@ -97,9 +103,7 @@ validator global_state(
           //Remaining amount must NOT be negative
           remaining_amount >= 0,
           //Goes to this spend script
-          global_state_output.address.payment_credential == Script(
-            global_state_spend_script_hash,
-          ),
+          global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //Datum must change only mintable_amount
           parsed_global_state_output_datum == expected_datum,
           //No Value change
@@ -124,6 +128,7 @@ validator global_state(
 
         let expected_datum =
           GlobalState {
+            transfer_manager_mint_script_hash: input_datum.transfer_manager_mint_script_hash,
             transfers_paused,
             power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
             mintable_amount: input_datum.mintable_amount,
@@ -143,9 +148,7 @@ validator global_state(
           //Must be a pauser
           power_user_data.is_pauser,
           //Goes to the this spend script
-          global_state_output.address.payment_credential == Script(
-            global_state_spend_script_hash,
-          ),
+          global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //Datum must change only transfer_paused
           parsed_global_state_output_datum == expected_datum,
           //No Value change
@@ -156,9 +159,7 @@ validator global_state(
           //Must be signed by the owner
           must_be_signed_by_credential(self, input_datum.owner_credential_hash),
           //Goes to the this spend script
-          global_state_output.address.payment_credential == Script(
-            global_state_spend_script_hash,
-          ),
+          global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //No Value change
           own_input.output.value == global_state_output.value,
         }

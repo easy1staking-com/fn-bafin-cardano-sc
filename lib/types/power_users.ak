@@ -23,12 +23,12 @@ pub type MintRedeemer {
   Init
   Deinit
   AddUser {
-    new_user_status_key: ByteArray,
+    new_users_status_key: ByteArray,
     appended_node_output_index: Int,
     anchor_node_output_index: Int,
   }
   RemoveUser {
-    user_status_key: ByteArray,
+    users_status_key: ByteArray,
     removed_node_input_index: Int,
     anchor_node_input_index: Int,
   }
