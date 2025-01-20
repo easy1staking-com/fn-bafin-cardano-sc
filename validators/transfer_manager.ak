@@ -51,13 +51,13 @@ validator transfer_manager(
         global_state_nft_policy_id,
         global_state_nft_asset_name,
       ) > 0,
-      //The node must belong to the poweruser list
+      //The node must belong to the PowerUser list
       ordered.prove_is_member(
         power_user_linked_list_policy_id,
         parsed_issuer_node_datum.key,
         prev_issuer_node_ref_input.output,
       ),
-      //Must be signed by the minter
+      //Must be signed by the power user
       must_be_signed_by_credential(self, power_user_credential_hash),
       if minted_amount > 0 {
         expect Some(smart_tokens_spend_script_output) =
@@ -65,20 +65,20 @@ validator transfer_manager(
         and {
           //Must be a minter
           power_user_data.is_minter,
+          //Goes to the smart tokens spend script
+          smart_tokens_spend_script_output.address.payment_credential == Script(
+            smart_tokens_spend_script_hash,
+          ),
+          //No datum
+          smart_tokens_spend_script_output.datum == NoDatum,
           //In output exactly how much you have minted
           quantity_of(
             smart_tokens_spend_script_output.value,
             policy_id,
             security_asset_name,
           ) == minted_amount,
-          //Goes to the smart tokens spend script
-          smart_tokens_spend_script_output.address.payment_credential == Script(
-            smart_tokens_spend_script_hash,
-          ),
           //Only ADA and this token
           length(flatten(smart_tokens_spend_script_output.value)) <= 2,
-          //No datum
-          smart_tokens_spend_script_output.datum == NoDatum,
         }
       } else {
         //Must be a burner
@@ -186,7 +186,7 @@ validator transfer_manager(
         },
       )
 
-    let all_token_outputs_go_to_smart_tokens_spend_script =
+    let all_token_outputs_are_correct =
       list.foldr(
         outputs_with_token,
         True,
@@ -214,7 +214,7 @@ validator transfer_manager(
     and {
       global_status_ok,
       all_token_inputs_can_be_spent,
-      all_token_outputs_go_to_smart_tokens_spend_script,
+      all_token_outputs_are_correct,
     }
   }
 

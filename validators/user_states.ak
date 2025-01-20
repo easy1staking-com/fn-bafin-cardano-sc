@@ -29,6 +29,7 @@ validator spend(
         ordered.list_state_transition(
           tokens(self.mint, user_states_mint_script_hash),
         )
+      //TODO no distinction between kyc and blacklist
       ModifyUserStatus(
         own_output_index,
         node_nft_asset_name,
