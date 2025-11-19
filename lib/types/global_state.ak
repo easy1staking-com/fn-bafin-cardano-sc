@@ -1,55 +1,26 @@
-pub type SecurityInfo {
-  isin: ByteArray,
-  termOfIssue: ByteArray,
-  securityType: ByteArray,
-  securityForm: ByteArray,
-  securityClass: ByteArray,
-  recordKeeping: ByteArray,
-  entryType: ByteArray,
-  withoutVotingRights: Bool,
-  transferRestrictions: Bool,
-  thirdPartyRights: Bool,
-  companyConsent: Bool,
-  participateSettlement: Bool,
-  paymentbond: ByteArray,
-  dividendPaymentFrequency: ByteArray,
-  //total number of tokens
-  volumeOfIssuance: Int,
-  nominalAmount: Int,
-  issuerName: ByteArray,
-  issuerRegistration: ByteArray,
-  cryptoSecurityRegister: ByteArray,
-  shareCustodian: ByteArray,
-  tokenCustodian: ByteArray,
-}
-
-pub type GlobalState {
-  //Mint hash (policy_id) of the smart token
-  transfer_manager_mint_script_hash: ByteArray,
+pub type GlobalStateDatum {
   //If true, no transfer can be executed
   transfers_paused: Bool,
-  //PowerUsers linked list minting policy
-  power_user_linked_list_policy_id: ByteArray,
   //Goes to zero when new tokens are minted, increases when tokens are burnt
   mintable_amount: Int,
+  //Users linked list minting policy
+  users_linked_list_policy_id: ByteArray,
+  //PowerUsers linked list minting policy
+  power_user_linked_list_policy_id: ByteArray,
   //Owner of the security
   owner_credential_hash: ByteArray,
-  //BaFin compliant info, not directly used in the contracts
-  security_info: SecurityInfo,
-}
-
-pub type GlobalStateMintRedeemer {
-  global_state_output_index: Int,
+  //Regulation (eg. BaFin) compliancy info, not directly used in the contracts
+  security_info: Data,
 }
 
 pub type GlobalStateSpendAction {
-  MintSecurity { transferManagerMintRedeemerIndex: Int }
+  MintSecurity { issuance_policy_redeemer_index: Int }
   PauseTransfers {
     transfers_paused: Bool,
-    issuer_node_ref_input_index: Int,
-    prev_issuer_node_ref_input_index: Int,
+    power_user_node_ref_input_index: Int,
+    prev_power_user_node_ref_input_index: Int,
   }
-  UpgradeGlobalState
+  ModifySecurityInfo { new_security_info: Data }
 }
 
 pub type GlobalStateSpendRedeemer {

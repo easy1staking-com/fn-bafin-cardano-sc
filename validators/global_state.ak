@@ -1,63 +1,45 @@
-use aiken/collection/dict
-use aiken/collection/list.{length}
+use aiken/collection/list
 use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId, flatten, quantity_of, tokens}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Transaction, find_input,
 }
+use constants
 use types/global_state.{
-  GlobalState, GlobalStateMintRedeemer, GlobalStateSpendRedeemer, MintSecurity,
-  PauseTransfers, UpgradeGlobalState,
+  GlobalStateDatum, GlobalStateSpendRedeemer, MintSecurity, ModifySecurityInfo,
+  PauseTransfers,
 } as gs
 use types/power_users.{PowerUser}
-use types/transfer_manager.{TransferManagerMintRedeemer} as tm
-use utils.{must_be_signed_by_credential}
+use utils.{must_be_signed_by_credential, quantity_of_policy_id}
 
-validator mint(
-  init_input_out_ref: OutputReference,
-  global_state_spend_script_hash: ByteArray,
-) {
-  mint(
-    redeemer: GlobalStateMintRedeemer,
-    policy_id: PolicyId,
-    self: Transaction,
-  ) {
-    let inputRefHash = utils.hash_output_ref(init_input_out_ref)
+validator global_state_validator(tx0: ByteArray, index0: Int) {
+  mint(_redeemer: Data, policy_id: PolicyId, self: Transaction) {
+    let contractCredential = Script(policy_id)
 
-    expect Some(global_state_output) =
-      list.at(self.outputs, redeemer.global_state_output_index)
-    expect InlineDatum(global_state_output_datum) = global_state_output.datum
-    //Ensure datum is of correct type
-    expect _parsed_global_state_output_datum: GlobalState =
-      global_state_output_datum
+    let one_time_utxo = OutputReference(tx0, index0)
+    //we won't use input_present, we just need it to be there, otherwise error
+    expect Some(_input_present) = find_input(self.inputs, one_time_utxo)
+    let output_parameters = utils.safe_list_at(self.outputs, 0)
+
     and {
-      //The init input must be spent
-      list.any(
-        self.inputs,
-        fn(input) { input.output_reference == init_input_out_ref },
-      ),
-      //Only 1 NFT minted ever
-      dict.size(tokens(self.mint, policy_id)) == 1,
-      //NFT minted goes to output
-      quantity_of(global_state_output.value, policy_id, inputRefHash) == 1,
-      //Goes to this spend script
-      global_state_output.address.payment_credential == Script(
-        global_state_spend_script_hash,
-      ),
-      //Only ADA and this token
-      length(flatten(global_state_output.value)) <= 2,
+      //First output goes to this address
+      output_parameters.address.payment_credential == contractCredential,
+      //Only 1 token of same policy
+      quantity_of_policy_id(self.mint, policy_id) == 1,
+      //I am minting only 1 token (NFT)
+      quantity_of(self.mint, policy_id, constants.global_state_asset_name) == 1,
+      //NFT goes to the output
+      quantity_of(
+        output_parameters.value,
+        policy_id,
+        constants.global_state_asset_name,
+      ) == 1,
     }
   }
 
-  else(_) {
-    fail
-  }
-}
-
-validator spend {
   spend(
-    datumOpt: Option<GlobalState>,
+    datumOpt: Option<GlobalStateDatum>,
     redeemer: GlobalStateSpendRedeemer,
     inputOutRef: OutputReference,
     self: Transaction,
@@ -68,37 +50,38 @@ validator spend {
         self.inputs,
         fn(input) { input.output_reference == inputOutRef },
       )
+    expect Script(own_hash) = own_input.output.address.payment_credential
+
+    //TODO Get it from Config with builtins
+    let issuance_policy_id = "TODO"
 
     expect Some(global_state_output) =
       list.at(self.outputs, redeemer.global_state_output_index)
     expect InlineDatum(global_state_output_datum) = global_state_output.datum
-    expect parsed_global_state_output_datum: GlobalState =
+    expect parsed_global_state_output_datum: GlobalStateDatum =
       global_state_output_datum
-
     when redeemer.action is {
-      MintSecurity(transfer_manager_mint_redeemer_index) -> {
+      MintSecurity { issuance_policy_redeemer_index } -> {
         //TransferManager Mint script must be called
-        expect Some(transfer_manager_mint_redeemer_in_tx) =
-          list.at(self.redeemers, transfer_manager_mint_redeemer_index)
-        expect
-          transfer_manager_mint_redeemer_in_tx.1st == Mint(
-            input_datum.transfer_manager_mint_script_hash,
+        expect Some(issuance_policy_redeemer) =
+          list.at(self.redeemers, issuance_policy_redeemer_index)
+        expect issuance_policy_redeemer.1st == Mint(issuance_policy_id)
+        let minted_amount =
+          quantity_of(
+            self.mint,
+            issuance_policy_id,
+            constants.security_asset_name,
           )
-        expect TransferManagerMintRedeemer { minted_amount, .. } =
-          transfer_manager_mint_redeemer_in_tx.2nd
-
         let remaining_amount = input_datum.mintable_amount - minted_amount
-
         let expected_datum =
-          GlobalState {
-            transfer_manager_mint_script_hash: input_datum.transfer_manager_mint_script_hash,
+          GlobalStateDatum {
             transfers_paused: input_datum.transfers_paused,
-            power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
             mintable_amount: remaining_amount,
+            users_linked_list_policy_id: input_datum.users_linked_list_policy_id,
+            power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
             owner_credential_hash: input_datum.owner_credential_hash,
             security_info: input_datum.security_info,
           }
-
         and {
           //Remaining amount must NOT be negative
           remaining_amount >= 0,
@@ -106,63 +89,80 @@ validator spend {
           global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //Datum must change only mintable_amount
           parsed_global_state_output_datum == expected_datum,
+          //Global State output must have the correct NFT to be the legit one
+          quantity_of(
+            global_state_output.value,
+            own_hash,
+            constants.global_state_asset_name,
+          ) == 1,
           //No Value change
           own_input.output.value == global_state_output.value,
         }
       }
-
-      PauseTransfers(
+      PauseTransfers {
         transfers_paused,
-        issuer_node_ref_input_index,
-        prev_issuer_node_ref_input_index,
-      ) -> {
-        expect Some(issuer_node_ref_input) =
-          list.at(self.reference_inputs, issuer_node_ref_input_index)
-        expect InlineDatum(issuer_node_datum) =
-          issuer_node_ref_input.output.datum
-        expect parsed_issuer_node_datum: NodeDatum = issuer_node_datum
-        expect Key(power_user_credential_hash) = parsed_issuer_node_datum.key
-        expect power_user_data: PowerUser = parsed_issuer_node_datum.data
-        expect Some(prev_issuer_node_ref_input) =
-          list.at(self.reference_inputs, prev_issuer_node_ref_input_index)
-
+        power_user_node_ref_input_index,
+        prev_power_user_node_ref_input_index,
+      } -> {
+        expect Some(power_user_node_ref_input) =
+          list.at(self.reference_inputs, power_user_node_ref_input_index)
+        expect InlineDatum(power_user_node_datum) =
+          power_user_node_ref_input.output.datum
+        expect parsed_power_user_node_datum: NodeDatum = power_user_node_datum
+        expect Key { key: power_user_credential_hash } =
+          parsed_power_user_node_datum.key
+        expect power_user_data: PowerUser = parsed_power_user_node_datum.data
+        expect Some(prev_power_user_node_ref_input) =
+          list.at(self.reference_inputs, prev_power_user_node_ref_input_index)
         let expected_datum =
-          GlobalState {
-            transfer_manager_mint_script_hash: input_datum.transfer_manager_mint_script_hash,
+          GlobalStateDatum {
             transfers_paused,
-            power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
             mintable_amount: input_datum.mintable_amount,
+            users_linked_list_policy_id: input_datum.users_linked_list_policy_id,
+            power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
             owner_credential_hash: input_datum.owner_credential_hash,
             security_info: input_datum.security_info,
           }
-
         and {
           //The node must belong to the poweruser list
           ordered.prove_is_member(
             input_datum.power_user_linked_list_policy_id,
-            parsed_issuer_node_datum.key,
-            prev_issuer_node_ref_input.output,
+            parsed_power_user_node_datum.key,
+            prev_power_user_node_ref_input.output,
           ),
           //Must be signed by the minter
           must_be_signed_by_credential(self, power_user_credential_hash),
-          //Must be a pauser
-          power_user_data.is_pauser,
+          //Must have permission to pause/unpause transfers
+          power_user_data.can_pause,
           //Goes to the this spend script
           global_state_output.address.payment_credential == own_input.output.address.payment_credential,
-          //Datum must change only transfer_paused
+          //Datum must change only transfers_paused
           parsed_global_state_output_datum == expected_datum,
           //No Value change
           own_input.output.value == global_state_output.value,
         }
       }
-      UpgradeGlobalState -> and {
+      ModifySecurityInfo { new_security_info } -> {
+        let expected_datum =
+          GlobalStateDatum {
+            transfers_paused: input_datum.transfers_paused,
+            mintable_amount: input_datum.mintable_amount,
+            users_linked_list_policy_id: input_datum.users_linked_list_policy_id,
+            power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
+            owner_credential_hash: input_datum.owner_credential_hash,
+            security_info: new_security_info,
+          }
+        and {
           //Must be signed by the owner
           must_be_signed_by_credential(self, input_datum.owner_credential_hash),
           //Goes to the this spend script
           global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //No Value change
           own_input.output.value == global_state_output.value,
+          //Datum must change only transfers_paused
+          parsed_global_state_output_datum == expected_datum,
         }
+      }
     }
   }
 
