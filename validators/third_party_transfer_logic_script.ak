@@ -1,8 +1,8 @@
-use aiken/collection/list.{length}
-use aiken_design_patterns/linked_list/ordered.{NodeDatum}
-use cardano/address.{Credential}
-use cardano/assets.{PolicyId, flatten, quantity_of}
-use cardano/transaction.{DatumHash, InlineDatum, Input, Output, Transaction}
+use aiken/collection/list
+use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
+use cardano/address.{Credential, Inline, Script, VerificationKey}
+use cardano/assets.{PolicyId, quantity_of}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use types/power_users.{PowerUser}
 use types/third_party_transfer_logic_script.{
   ThirdPartyTransferLogicScriptWithdrawRedeemer,
@@ -40,6 +40,13 @@ validator third_party_transfer_logic_validator(
           //The last output is not checked but will return its value at the end, so if False withdraw will fail
           expect result
 
+          expect Some(Inline(stake_cred)) = output.address.stake_credential
+          let output_stake_credential_hash =
+            when stake_cred is {
+              VerificationKey(hash) -> hash
+              Script(hash) -> hash
+            }
+
           let destination_user_node_ref_input =
             utils.safe_list_at(
               self.reference_inputs,
@@ -72,16 +79,12 @@ validator third_party_transfer_logic_validator(
               parsed_destination_user_datum.key,
               destination_user_anchor_node_ref_input.output,
             ),
+            //The key of the destination user must match the output credential hash
+            parsed_destination_user_datum.key == Key(
+              output_stake_credential_hash,
+            ),
             destination_user_data.is_verified,
             destination_user_data.is_blacklisted == False,
-            //TODO Are these 2 checks necessary? CIP113 base script should already check them
-            //Datum must not be of type hash to avoid generating a too big tx
-            when output.datum is {
-              DatumHash(_hash) -> False
-              _ -> True
-            },
-            //DOS protection
-            length(flatten(output.value)) <= 21,
           }
         },
       )
