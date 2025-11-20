@@ -9,19 +9,22 @@ use constants
 use types/config.{Config}
 use utils
 
-//Contains all SC params
-validator config_validator(tx0: ByteArray, index0: Int) {
+validator config_mint_validator(
+  tx0: ByteArray,
+  index0: Int,
+  config_spend_script_hash: ByteArray,
+) {
   mint(_redeemer: Redeemer, policy_id: PolicyId, self: Transaction) {
-    let contractCredential = Script(policy_id)
-
     let one_time_utxo = OutputReference(tx0, index0)
-    //we won't use input_present, we just need it to be there, otherwise error
+    //We won't use input_present, we just need it to be there, otherwise error
     expect Some(_input_present) = find_input(self.inputs, one_time_utxo)
     let output_parameters = utils.safe_list_at(self.outputs, 0)
 
     and {
       //First output goes to this address
-      output_parameters.address.payment_credential == contractCredential,
+      output_parameters.address.payment_credential == Script(
+        config_spend_script_hash,
+      ),
       //Only 1 token of same policy
       utils.quantity_of_policy_id(self.mint, policy_id) == 1,
       //I am minting only 1 token (NFT)
@@ -35,32 +38,30 @@ validator config_validator(tx0: ByteArray, index0: Int) {
     }
   }
 
+  else(_) {
+    fail
+  }
+}
+
+validator config_spend_validator(owner_credential_hash: ByteArray) {
   spend(
-    datumOpt: Option<Config>,
+    datum_opt: Option<Config>,
     _redeemer: Redeemer,
     own_ref: OutputReference,
     self: Transaction,
   ) {
-    expect Some(datum) = datumOpt
+    expect Some(datum) = datum_opt
     expect Some(input_contract) = find_input(self.inputs, own_ref)
     let output_contract = utils.safe_list_at(self.outputs, 0)
-    expect InlineDatum(outputDatum) = output_contract.datum
+    expect InlineDatum(output_datum) = output_contract.datum
     //value can be anything but the type must be of correct type
-    expect _casted_datum: Config = outputDatum
-
-    expect Script(contractScriptHash) =
-      input_contract.output.address.payment_credential
+    expect _casted_datum: Config = output_datum
 
     and {
       input_contract.output.value == output_contract.value,
       input_contract.output.address == output_contract.address,
       //Must be signed by the owner
-      utils.must_be_signed_by_credential(self, constants.owner_credential_hash),
-      quantity_of(
-        input_contract.output.value,
-        contractScriptHash,
-        constants.config_asset_name,
-      ) == 1,
+      utils.must_be_signed_by_credential(self, owner_credential_hash),
     }
   }
 

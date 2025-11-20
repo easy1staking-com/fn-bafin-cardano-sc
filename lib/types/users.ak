@@ -1,5 +1,5 @@
 pub type User {
-  is_kyced: Bool,
+  is_verified: Bool,
   is_blacklisted: Bool,
 }
 
@@ -8,6 +8,7 @@ pub type SpendRedeemer {
   ModifyUser {
     own_output_index: Int,
     node_nft_asset_name: ByteArray,
+    //Index of the field in the User datum to change
     state_to_change_index: Int,
     state_field_value: Bool,
     power_user_node_ref_input_index: Int,

@@ -3,7 +3,6 @@ use aiken_design_patterns/linked_list/ordered.{NodeDatum}
 use cardano/address.{Credential}
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{DatumHash, InlineDatum, Input, Output, Transaction}
-use constants
 use types/power_users.{PowerUser}
 use types/third_party_transfer_logic_script.{
   ThirdPartyTransferLogicScriptWithdrawRedeemer,
@@ -12,8 +11,9 @@ use types/users.{User}
 use utils.{must_be_signed_by_credential}
 
 validator third_party_transfer_logic_validator(
-  issuance_policy_id: PolicyId,
+  security_asset_name: ByteArray,
   users_linked_list_policy_id: ByteArray,
+  issuance_policy_id: PolicyId,
 ) {
   withdraw(
     redeemer: ThirdPartyTransferLogicScriptWithdrawRedeemer,
@@ -21,17 +21,13 @@ validator third_party_transfer_logic_validator(
     self: Transaction,
   ) {
     //Any input can be spent
-    //Any output with this token must go to a KYCed and non-blacklisted address
+    //Any output with this token must go to a verified and non-blacklisted address
     //programmable_logic_base already check the correct destination payment credentials
     let outputs_with_token =
       list.filter(
         self.outputs,
         fn(output) {
-          quantity_of(
-            output.value,
-            issuance_policy_id,
-            constants.security_asset_name,
-          ) > 0
+          quantity_of(output.value, issuance_policy_id, security_asset_name) > 0
         },
       )
 
@@ -76,7 +72,7 @@ validator third_party_transfer_logic_validator(
               parsed_destination_user_datum.key,
               destination_user_anchor_node_ref_input.output,
             ),
-            destination_user_data.is_kyced,
+            destination_user_data.is_verified,
             destination_user_data.is_blacklisted == False,
             //TODO Are these 2 checks necessary? CIP113 base script should already check them
             //Datum must not be of type hash to avoid generating a too big tx
@@ -91,8 +87,11 @@ validator third_party_transfer_logic_validator(
       )
 
     //Power user must have the can_force_transfer right
-    expect Some(power_user_ref_input) =
-      list.at(self.reference_inputs, redeemer.power_user_node_ref_input_index)
+    let power_user_ref_input =
+      utils.safe_list_at(
+        self.reference_inputs,
+        redeemer.power_user_node_ref_input_index,
+      )
     expect InlineDatum(power_user_user_datum) =
       power_user_ref_input.output.datum
     expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum

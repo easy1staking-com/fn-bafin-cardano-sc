@@ -7,8 +7,6 @@ pub type GlobalStateDatum {
   users_linked_list_policy_id: ByteArray,
   //PowerUsers linked list minting policy
   power_user_linked_list_policy_id: ByteArray,
-  //Owner of the security
-  owner_credential_hash: ByteArray,
   //Regulation (eg. BaFin) compliancy info, not directly used in the contracts
   security_info: Data,
 }
@@ -18,12 +16,13 @@ pub type GlobalStateSpendAction {
   PauseTransfers {
     transfers_paused: Bool,
     power_user_node_ref_input_index: Int,
-    prev_power_user_node_ref_input_index: Int,
+    power_user_anchor_node_ref_input_index: Int,
   }
   ModifySecurityInfo { new_security_info: Data }
 }
 
 pub type GlobalStateSpendRedeemer {
+  config_ref_input_index: Int,
   global_state_output_index: Int,
   action: GlobalStateSpendAction,
 }

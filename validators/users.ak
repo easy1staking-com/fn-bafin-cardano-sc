@@ -18,12 +18,12 @@ validator users_validator(
   users_linked_list_policy_id: ByteArray,
 ) {
   spend(
-    datumOpt: Option<User>,
+    datum_opt: Option<User>,
     redeemer: SpendRedeemer,
-    inputOutRef: OutputReference,
+    input_out_ref: OutputReference,
     self: Transaction,
   ) {
-    expect Some(input_datum) = datumOpt
+    expect Some(input_datum) = datum_opt
     when redeemer is {
       StateTransition ->
         //Delegating responsibility to the mint validator
@@ -41,23 +41,29 @@ validator users_validator(
         expect Some(own_input) =
           list.find(
             self.inputs,
-            fn(input) { input.output_reference == inputOutRef },
+            fn(input) { input.output_reference == input_out_ref },
           )
         let node_mint = tokens(self.mint, users_linked_list_policy_id)
-        expect Some(own_output) = list.at(self.outputs, own_output_index)
+        let own_output = utils.safe_list_at(self.outputs, own_output_index)
         expect InlineDatum(output_datum) = own_output.datum
         expect parsed_output_datum: NodeDatum = output_datum
         expect output_user_status: User = parsed_output_datum.data
-        expect Some(power_user_ref_input) =
-          list.at(self.reference_inputs, power_user_node_ref_input_index)
+        let power_user_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            power_user_node_ref_input_index,
+          )
         expect InlineDatum(power_user_user_datum) =
           power_user_ref_input.output.datum
         expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
         expect power_user_data: PowerUser = parsed_power_user_user_datum.data
         expect Key { key: power_user_node_key } =
           parsed_power_user_user_datum.key
-        expect Some(power_user_anchor_node_ref_input) =
-          list.at(self.reference_inputs, power_user_anchor_node_ref_input_index)
+        let power_user_anchor_node_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            power_user_anchor_node_ref_input_index,
+          )
         and {
           //The node must belong to the power users registry
           ordered.prove_is_member(
@@ -71,18 +77,18 @@ validator users_validator(
           if state_to_change_index == 0 {
             let expected_datum =
               User {
-                is_kyced: state_field_value,
+                is_verified: state_field_value,
                 is_blacklisted: input_datum.is_blacklisted,
               }
             and {
               //Must have permission
-              power_user_data.can_kyc,
+              power_user_data.can_verify,
               output_user_status == expected_datum,
             }
           } else {
             let expected_datum =
               User {
-                is_kyced: input_datum.is_kyced,
+                is_verified: input_datum.is_verified,
                 is_blacklisted: state_field_value,
               }
             and {
@@ -134,18 +140,24 @@ validator mint(
         power_user_node_ref_input_index,
         power_user_anchor_node_ref_input_index,
       } -> {
-        expect Some(power_user_ref_input) =
-          list.at(self.reference_inputs, power_user_node_ref_input_index)
+        let power_user_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            power_user_node_ref_input_index,
+          )
         expect InlineDatum(power_user_user_datum) =
           power_user_ref_input.output.datum
         expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
         expect power_user_data: PowerUser = parsed_power_user_user_datum.data
         expect Key { key: power_user_node_key } =
           parsed_power_user_user_datum.key
-        expect Some(power_user_anchor_node_ref_input) =
-          list.at(self.reference_inputs, power_user_anchor_node_ref_input_index)
-        expect Some(inserted_node_output) =
-          list.at(self.outputs, appended_node_output_index)
+        let power_user_anchor_node_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            power_user_anchor_node_ref_input_index,
+          )
+        let inserted_node_output =
+          utils.safe_list_at(self.outputs, appended_node_output_index)
         expect InlineDatum(users_status_datum) = inserted_node_output.datum
         expect parsed_users_status_datum: NodeDatum = users_status_datum
         //Datum must be of correct type
@@ -164,17 +176,17 @@ validator mint(
             and {
               power_user_data.is_admin,
               parsed_users_status_data == User {
-                is_kyced: False,
+                is_verified: False,
                 is_blacklisted: False,
               },
             },
             and {
-              power_user_data.can_kyc,
+              power_user_data.can_verify,
               parsed_users_status_data.is_blacklisted == False,
             },
             and {
               power_user_data.can_blacklist,
-              parsed_users_status_data.is_kyced == False,
+              parsed_users_status_data.is_verified == False,
             },
           },
           //User must be added into the user status list
@@ -195,14 +207,17 @@ validator mint(
         admin_node_ref_input_index,
         admin_anchor_node_ref_input_index,
       } -> {
-        expect Some(admin_ref_input) =
-          list.at(self.reference_inputs, admin_node_ref_input_index)
+        let admin_ref_input =
+          utils.safe_list_at(self.reference_inputs, admin_node_ref_input_index)
         expect InlineDatum(admin_datum) = admin_ref_input.output.datum
         expect parsed_admin_datum: NodeDatum = admin_datum
         expect admin_data: PowerUser = parsed_admin_datum.data
         expect Key { key: admin_node_key } = parsed_admin_datum.key
-        expect Some(admin_anchor_node_ref_input) =
-          list.at(self.reference_inputs, admin_anchor_node_ref_input_index)
+        let admin_anchor_node_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            admin_anchor_node_ref_input_index,
+          )
         and {
           //The node must belong to the power users registry
           ordered.prove_is_member(

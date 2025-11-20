@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list
 use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Address, Script}
@@ -13,9 +14,9 @@ use types/global_state.{
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential, quantity_of_policy_id}
 
-validator global_state_validator(tx0: ByteArray, index0: Int) {
+validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
   mint(_redeemer: Data, policy_id: PolicyId, self: Transaction) {
-    let contractCredential = Script(policy_id)
+    let contract_credential = Script(policy_id)
 
     let one_time_utxo = OutputReference(tx0, index0)
     //we won't use input_present, we just need it to be there, otherwise error
@@ -24,7 +25,7 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
 
     and {
       //First output goes to this address
-      output_parameters.address.payment_credential == contractCredential,
+      output_parameters.address.payment_credential == contract_credential,
       //Only 1 token of same policy
       quantity_of_policy_id(self.mint, policy_id) == 1,
       //I am minting only 1 token (NFT)
@@ -38,40 +39,54 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
     }
   }
 
+  else(_) {
+    fail
+  }
+}
+
+validator global_state_spend_validator(
+  owner_credential_hash: ByteArray,
+  security_asset_name: ByteArray,
+  config_policy_id: ByteArray,
+  global_state_policy_id: ByteArray,
+) {
   spend(
-    datumOpt: Option<GlobalStateDatum>,
+    datum_opt: Option<GlobalStateDatum>,
     redeemer: GlobalStateSpendRedeemer,
-    inputOutRef: OutputReference,
+    input_out_ref: OutputReference,
     self: Transaction,
   ) {
-    expect Some(input_datum) = datumOpt
+    expect Some(input_datum) = datum_opt
     expect Some(own_input) =
       list.find(
         self.inputs,
-        fn(input) { input.output_reference == inputOutRef },
+        fn(input) { input.output_reference == input_out_ref },
       )
-    expect Script(own_hash) = own_input.output.address.payment_credential
 
-    //TODO Get it from Config with builtins
-    let issuance_policy_id = "TODO"
+    let config =
+      utils.get_config_as_data_list(
+        utils.safe_list_at(
+          self.reference_inputs,
+          redeemer.config_ref_input_index,
+        ),
+        config_policy_id,
+        constants.config_asset_name,
+      )
+    let issuance_policy_id = builtin.un_b_data(utils.safe_list_at(config, 0))
 
-    expect Some(global_state_output) =
-      list.at(self.outputs, redeemer.global_state_output_index)
+    let global_state_output =
+      utils.safe_list_at(self.outputs, redeemer.global_state_output_index)
     expect InlineDatum(global_state_output_datum) = global_state_output.datum
     expect parsed_global_state_output_datum: GlobalStateDatum =
       global_state_output_datum
     when redeemer.action is {
       MintSecurity { issuance_policy_redeemer_index } -> {
-        //TransferManager Mint script must be called
-        expect Some(issuance_policy_redeemer) =
-          list.at(self.redeemers, issuance_policy_redeemer_index)
+        //issuance_logic.mint validator must be called
+        let issuance_policy_redeemer =
+          utils.safe_list_at(self.redeemers, issuance_policy_redeemer_index)
         expect issuance_policy_redeemer.1st == Mint(issuance_policy_id)
         let minted_amount =
-          quantity_of(
-            self.mint,
-            issuance_policy_id,
-            constants.security_asset_name,
-          )
+          quantity_of(self.mint, issuance_policy_id, security_asset_name)
         let remaining_amount = input_datum.mintable_amount - minted_amount
         let expected_datum =
           GlobalStateDatum {
@@ -79,7 +94,6 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
             mintable_amount: remaining_amount,
             users_linked_list_policy_id: input_datum.users_linked_list_policy_id,
             power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-            owner_credential_hash: input_datum.owner_credential_hash,
             security_info: input_datum.security_info,
           }
         and {
@@ -92,7 +106,7 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
           //Global State output must have the correct NFT to be the legit one
           quantity_of(
             global_state_output.value,
-            own_hash,
+            global_state_policy_id,
             constants.global_state_asset_name,
           ) == 1,
           //No Value change
@@ -102,25 +116,30 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
       PauseTransfers {
         transfers_paused,
         power_user_node_ref_input_index,
-        prev_power_user_node_ref_input_index,
+        power_user_anchor_node_ref_input_index,
       } -> {
-        expect Some(power_user_node_ref_input) =
-          list.at(self.reference_inputs, power_user_node_ref_input_index)
+        let power_user_node_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            power_user_node_ref_input_index,
+          )
         expect InlineDatum(power_user_node_datum) =
           power_user_node_ref_input.output.datum
         expect parsed_power_user_node_datum: NodeDatum = power_user_node_datum
         expect Key { key: power_user_credential_hash } =
           parsed_power_user_node_datum.key
         expect power_user_data: PowerUser = parsed_power_user_node_datum.data
-        expect Some(prev_power_user_node_ref_input) =
-          list.at(self.reference_inputs, prev_power_user_node_ref_input_index)
+        let power_user_anchor_node_ref_input =
+          utils.safe_list_at(
+            self.reference_inputs,
+            power_user_anchor_node_ref_input_index,
+          )
         let expected_datum =
           GlobalStateDatum {
             transfers_paused,
             mintable_amount: input_datum.mintable_amount,
             users_linked_list_policy_id: input_datum.users_linked_list_policy_id,
             power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-            owner_credential_hash: input_datum.owner_credential_hash,
             security_info: input_datum.security_info,
           }
         and {
@@ -128,7 +147,7 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
           ordered.prove_is_member(
             input_datum.power_user_linked_list_policy_id,
             parsed_power_user_node_datum.key,
-            prev_power_user_node_ref_input.output,
+            power_user_anchor_node_ref_input.output,
           ),
           //Must be signed by the minter
           must_be_signed_by_credential(self, power_user_credential_hash),
@@ -149,12 +168,11 @@ validator global_state_validator(tx0: ByteArray, index0: Int) {
             mintable_amount: input_datum.mintable_amount,
             users_linked_list_policy_id: input_datum.users_linked_list_policy_id,
             power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-            owner_credential_hash: input_datum.owner_credential_hash,
             security_info: new_security_info,
           }
         and {
           //Must be signed by the owner
-          must_be_signed_by_credential(self, input_datum.owner_credential_hash),
+          must_be_signed_by_credential(self, owner_credential_hash),
           //Goes to the this spend script
           global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //No Value change

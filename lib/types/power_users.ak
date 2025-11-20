@@ -1,6 +1,6 @@
 pub type PowerUser {
   credential_hash: ByteArray,
-  //Admins can add/remove users from the users linked list
+  //Admins can add/remove users from the Users linked list
   is_admin: Bool,
   //Minters can mint new tokens
   can_mint: Bool,
@@ -8,11 +8,11 @@ pub type PowerUser {
   can_burn: Bool,
   //Pausers can pause/unpause all the transfers
   can_pause: Bool,
-  //Kycers can kyc users
-  can_kyc: Bool,
+  //Verifiers can verify users (KYC)
+  can_verify: Bool,
   //Blacklisters can blacklist users so they cannot transfer tokens
   can_blacklist: Bool,
-  //Force transfers can move tokens from users to any KYCed and non-blacklisted address
+  //Force transfers can move tokens from users to any verified and non-blacklisted address
   can_force_transfer: Bool,
 }
 

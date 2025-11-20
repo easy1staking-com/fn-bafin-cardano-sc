@@ -1,15 +1,16 @@
+use aiken/builtin
 use aiken/collection/list.{length}
 use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{DatumHash, InlineDatum, Input, Output, Transaction}
 use constants
-use types/global_state.{GlobalStateDatum}
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
 use types/users.{User}
 use utils.{must_be_signed_by_credential}
 
 validator transfer_logic_validator(
+  security_asset_name: ByteArray,
   global_state_policy_id: ByteArray,
   users_linked_list_policy_id: ByteArray,
   issuance_policy_id: PolicyId,
@@ -19,11 +20,15 @@ validator transfer_logic_validator(
     _credential: Credential,
     self: Transaction,
   ) {
-    expect Some(global_state_ref_input) =
-      list.at(self.reference_inputs, redeemer.global_state_ref_input_index)
+    let global_state_ref_input =
+      utils.safe_list_at(
+        self.reference_inputs,
+        redeemer.global_state_ref_input_index,
+      )
     expect InlineDatum(global_state_datum) = global_state_ref_input.output.datum
-    //TODO This can be more efficient with builtins
-    expect GlobalStateDatum { transfers_paused, .. } = global_state_datum
+    //Efficient retrieval of the transfers_paused field
+    let transfers_paused =
+      builtin.unconstr_index(builtin.unconstr_fields(global_state_datum)) == 1
 
     let global_state_ok = and {
         //Global State must have the correct NFT
@@ -46,7 +51,7 @@ validator transfer_logic_validator(
             if quantity_of(
               input.output.value,
               issuance_policy_id,
-              constants.security_asset_name,
+              security_asset_name,
             ) > 0 {
               expect Some(Inline(stake_cred)) =
                 input.output.address.stake_credential
@@ -62,11 +67,7 @@ validator transfer_logic_validator(
       list.filter(
         self.outputs,
         fn(output) {
-          quantity_of(
-            output.value,
-            issuance_policy_id,
-            constants.security_asset_name,
-          ) > 0
+          quantity_of(output.value, issuance_policy_id, security_asset_name) > 0
         },
       )
 
@@ -88,17 +89,21 @@ validator transfer_logic_validator(
               Script(hash) -> hash
             }
 
-          expect Some(action) = list.at(redeemer.actionsForEachInput, index)
+          let action =
+            utils.safe_list_at(redeemer.actions_for_each_input, index)
 
-          expect Some(user_node_ref_input) =
-            list.at(self.reference_inputs, action.user_node_ref_input_index)
+          let user_node_ref_input =
+            utils.safe_list_at(
+              self.reference_inputs,
+              action.user_node_ref_input_index,
+            )
           expect InlineDatum(user_node_datum) = user_node_ref_input.output.datum
           expect parsed_user_node_datum: NodeDatum = user_node_datum
           expect user_state: User = parsed_user_node_datum.data
-          expect Some(prev_user_node_ref_input) =
-            list.at(
+          let prev_user_node_ref_input =
+            utils.safe_list_at(
               self.reference_inputs,
-              action.prev_user_node_ref_input_index,
+              action.user_anchor_node_ref_input_index,
             )
 
           and {
@@ -112,8 +117,8 @@ validator transfer_logic_validator(
             parsed_user_node_datum.key == Key { key: input_credential_hash },
             //Tx must be signed by the user owning this utxo
             must_be_signed_by_credential(self, input_credential_hash),
-            //User has done KYC properly
-            user_state.is_kyced == True,
+            //User has been verified
+            user_state.is_verified == True,
             //User is not blacklisted
             user_state.is_blacklisted == False,
           }

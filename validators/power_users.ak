@@ -6,18 +6,20 @@ use cardano/assets.{PolicyId, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use constants
 use types/power_users.{
   AddPowerUser, Deinit, Init, MintRedeemer, ModifyPowerUser, PowerUser,
   RemovePowerUser, SpendRedeemer, StateTransition,
 }
 use utils.{must_be_signed_by_credential}
 
-validator power_users_validator(power_users_linked_list_policy_id: ByteArray) {
+validator power_users_validator(
+  owner_credential_hash: ByteArray,
+  power_users_linked_list_policy_id: ByteArray,
+) {
   spend(
-    _datumOpt: Option<Data>,
+    _datum_opt: Option<Data>,
     redeemer: SpendRedeemer,
-    inputOutRef: OutputReference,
+    input_out_ref: OutputReference,
     self: Transaction,
   ) {
     when redeemer is {
@@ -34,16 +36,16 @@ validator power_users_validator(power_users_linked_list_policy_id: ByteArray) {
         expect Some(own_input) =
           list.find(
             self.inputs,
-            fn(input) { input.output_reference == inputOutRef },
+            fn(input) { input.output_reference == input_out_ref },
           )
         let node_mint = tokens(self.mint, power_users_linked_list_policy_id)
-        expect Some(own_output) = list.at(self.outputs, own_output_index)
+        let own_output = utils.safe_list_at(self.outputs, own_output_index)
         expect InlineDatum(output_datum) = own_output.datum
         expect parsed_output_datum: NodeDatum = output_datum
         expect power_user_data: PowerUser = parsed_output_datum.data
         and {
           //Must be signed by the owner
-          must_be_signed_by_credential(self, constants.owner_credential_hash),
+          must_be_signed_by_credential(self, owner_credential_hash),
           //Ensure you're only modifying data
           ordered.modify_data(
             node_mint,
@@ -65,8 +67,8 @@ validator power_users_validator(power_users_linked_list_policy_id: ByteArray) {
 }
 
 validator mint(
-  init_input_out_ref: OutputReference,
   owner_credential_hash: ByteArray,
+  init_input_out_ref: OutputReference,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
@@ -87,8 +89,8 @@ validator mint(
         appended_node_output_index,
         anchor_node_output_index,
       } -> {
-        expect Some(inserted_node_output) =
-          list.at(self.outputs, appended_node_output_index)
+        let inserted_node_output =
+          utils.safe_list_at(self.outputs, appended_node_output_index)
         expect InlineDatum(power_users_status_datum) =
           inserted_node_output.datum
         expect parsed_power_users_status_datum: NodeDatum =
@@ -115,8 +117,8 @@ validator mint(
         removed_node_input_index,
         anchor_node_input_index,
       } -> {
-        expect Some(inserted_node_output) =
-          list.at(self.outputs, removed_node_input_index)
+        let inserted_node_output =
+          utils.safe_list_at(self.outputs, removed_node_input_index)
         expect InlineDatum(power_users_status_datum) =
           inserted_node_output.datum
         expect parsed_power_users_status_datum: NodeDatum =
