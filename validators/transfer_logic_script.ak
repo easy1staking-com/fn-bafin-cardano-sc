@@ -7,7 +7,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use constants
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
 use types/users.{User}
-use utils.{must_be_signed_by_credential}
+use utils
 
 validator transfer_logic_validator(
   security_asset_name: ByteArray,
@@ -106,7 +106,7 @@ validator transfer_logic_validator(
             //Node must have the user credential hash
             parsed_user_node_datum.key == Key { key: input_stake_cred_hash },
             //Tx must be signed by the user owning this utxo
-            must_be_signed_by_credential(self, input_stake_cred_hash),
+            //Already done by CIP113 programmable_logic_global
             //User has been verified
             user_state.is_verified == True,
             //User is not blacklisted

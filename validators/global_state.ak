@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/list
 use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId, quantity_of}
+use cardano/assets.{PolicyId, quantity_of, without_lovelace}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Transaction, find_input,
 }
@@ -176,7 +176,9 @@ validator global_state_spend_validator(
           //Goes to the this spend script
           global_state_output.address.payment_credential == own_input.output.address.payment_credential,
           //No Value change
-          own_input.output.value == global_state_output.value,
+          without_lovelace(own_input.output.value) == without_lovelace(
+            global_state_output.value,
+          ),
           //Datum must change only transfers_paused
           parsed_global_state_output_datum == expected_datum,
         }
