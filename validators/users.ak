@@ -83,6 +83,8 @@ validator users_validator(
             and {
               //Must have permission
               power_user_data.can_verify,
+              //Cannot verify a blacklisted user
+              input_datum.is_blacklisted == False,
               output_user_status == expected_datum,
             }
           } else {
@@ -94,6 +96,8 @@ validator users_validator(
             and {
               //Must have permission
               power_user_data.can_blacklist,
+              //Cannot blacklist a verified user
+              input_datum.is_verified == False,
               output_user_status == expected_datum,
             }
           },

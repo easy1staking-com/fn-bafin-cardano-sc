@@ -28,6 +28,12 @@ validator minting_logic_validator(
         config_policy_id,
         constants.config_asset_name,
       )
+
+    // you should be able to calculate policy id reproducing the same steps that the registry mint does.
+    // The reason why I think this should work: https://github.com/cardano-foundation/cip113-programmable-tokens/blob/main/src/programmable-tokens-onchain-aiken/validators/registry_mint.ak#L72-L79
+    // is that if an attacker is spoofing the issuance utxo, it won't be anyway a registered programmable token (ie. there won't be an entry in the registry),
+    // BUT if the correct issuance is used, because of invoking the proper issuance contract, the token will actually be a programmable token
+    // which can be registered accordingly
     let issuance_policy_id = builtin.un_b_data(utils.safe_list_at(config, 0))
 
     let global_state_input =

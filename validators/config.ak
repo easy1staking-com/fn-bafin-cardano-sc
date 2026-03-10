@@ -12,6 +12,8 @@ use utils
 validator config_mint_validator(
   tx0: ByteArray,
   index0: Int,
+  // why can it be spent? from what I can see the hash is not used anywhere else and the execution of the script is not verrified nowhere
+  // also, the spend will allow to change it, which I think it isn't good.
   config_spend_script_hash: ByteArray,
 ) {
   mint(_redeemer: Redeemer, policy_id: PolicyId, self: Transaction) {
@@ -58,6 +60,7 @@ validator config_spend_validator(owner_credential_hash: ByteArray) {
     expect _casted_datum: Config = output_datum
 
     and {
+      // asserting againt the value is dangerous as mintuxo can change depending on the bytes used by the datum
       input_contract.output.value == output_contract.value,
       input_contract.output.address == output_contract.address,
       //Must be signed by the owner

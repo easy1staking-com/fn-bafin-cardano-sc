@@ -45,6 +45,8 @@ validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
 }
 
 validator global_state_spend_validator(
+  // statically setting `owner_credential_hash` here is imho not the best. it should be an attribute of the datum in teh global utxo
+  // so that i can be rotated, the nft policy id guarding the utxo should be used as paramter for indirection.
   owner_credential_hash: ByteArray,
   security_asset_name: ByteArray,
   config_policy_id: ByteArray,

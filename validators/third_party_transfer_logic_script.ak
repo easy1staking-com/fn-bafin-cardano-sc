@@ -12,6 +12,7 @@ use utils.{must_be_signed_by_credential}
 
 validator third_party_transfer_logic_validator(
   security_asset_name: ByteArray,
+  power_users_linked_list_policy_id: ByteArray,
   users_linked_list_policy_id: ByteArray,
   issuance_policy_id: PolicyId,
 ) {
@@ -73,7 +74,7 @@ validator third_party_transfer_logic_validator(
             parsed_destination_user_datum.data
 
           and {
-            //The node must belong to the power users registry
+            //The node must belong to the users registry
             ordered.prove_is_member(
               users_linked_list_policy_id,
               parsed_destination_user_datum.key,
@@ -99,10 +100,22 @@ validator third_party_transfer_logic_validator(
       power_user_ref_input.output.datum
     expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
     expect power_user_data: PowerUser = parsed_power_user_user_datum.data
+    expect Key { key: power_user_node_key } = parsed_power_user_user_datum.key
+    let power_user_anchor_node_ref_input =
+      utils.safe_list_at(
+        self.reference_inputs,
+        redeemer.power_user_anchor_node_ref_input_index,
+      )
     and {
       all_token_outputs_are_correct,
+      //The node must belong to the power users registry
+      ordered.prove_is_member(
+        power_users_linked_list_policy_id,
+        parsed_power_user_user_datum.key,
+        power_user_anchor_node_ref_input.output,
+      ),
       power_user_data.can_force_transfer,
-      must_be_signed_by_credential(self, power_user_data.credential_hash),
+      must_be_signed_by_credential(self, power_user_node_key),
     }
   }
 
