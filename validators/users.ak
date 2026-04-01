@@ -1,11 +1,13 @@
+use aiken/collection/dict
 use aiken/collection/list
-use aiken_design_patterns/linked_list/ordered.{
-  Key, NodeDatum, get_node_inputs, get_node_outputs,
+use aiken_design_patterns/linked_list.{
+  deinit, get_element_info, init, insert_ascending, remove, run_element_with,
+  run_eval_with, run_root_with, spend_for_adding_or_removing_an_element,
+  spend_for_updating_elements_data,
 }
 use cardano/assets.{PolicyId, tokens}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
+use cardano/transaction.{OutputReference, Transaction}
+use constants
 use types/power_users.{PowerUser}
 use types/users.{
   AddUser, Deinit, Init, MintRedeemer, ModifyUser, RemoveUser, SpendRedeemer,
@@ -18,97 +20,97 @@ validator users_validator(
   users_linked_list_policy_id: ByteArray,
 ) {
   spend(
-    datum_opt: Option<User>,
+    _datum_opt: Option<Data>,
     redeemer: SpendRedeemer,
     input_out_ref: OutputReference,
     self: Transaction,
   ) {
-    expect Some(input_datum) = datum_opt
     when redeemer is {
       StateTransition ->
         //Delegating responsibility to the mint validator
-        ordered.list_state_transition(
-          tokens(self.mint, users_linked_list_policy_id),
+        spend_for_adding_or_removing_an_element(
+          users_linked_list_policy_id,
+          self.mint,
         )
       ModifyUser {
+        own_input_index,
         own_output_index,
-        node_nft_asset_name,
         state_to_change_index,
         state_field_value,
         power_user_node_ref_input_index,
-        power_user_anchor_node_ref_input_index,
       } -> {
-        expect Some(own_input) =
-          list.find(
-            self.inputs,
-            fn(input) { input.output_reference == input_out_ref },
-          )
-        let node_mint = tokens(self.mint, users_linked_list_policy_id)
-        let own_output = utils.safe_list_at(self.outputs, own_output_index)
-        expect InlineDatum(output_datum) = own_output.datum
-        expect parsed_output_datum: NodeDatum = output_datum
-        expect output_user_status: User = parsed_output_datum.data
         let power_user_ref_input =
           utils.safe_list_at(
             self.reference_inputs,
             power_user_node_ref_input_index,
           )
-        expect InlineDatum(power_user_user_datum) =
-          power_user_ref_input.output.datum
-        expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
-        expect power_user_data: PowerUser = parsed_power_user_user_datum.data
-        expect Key { key: power_user_node_key } =
-          parsed_power_user_user_datum.key
-        let power_user_anchor_node_ref_input =
-          utils.safe_list_at(
-            self.reference_inputs,
-            power_user_anchor_node_ref_input_index,
+
+        let (power_user_node_key, power_user_data) =
+          get_element_info(
+            power_user_ref_input.output,
+            fn(_lovelace, node_key, data, _link) {
+              expect Some(key) = node_key
+              expect power_user_data: PowerUser = data
+              (key, power_user_data)
+            },
           )
+            |> run_element_with(
+                power_users_linked_list_policy_id,
+                constants.linked_list_root_key,
+                constants.linked_list_node_key_prefix,
+                constants.linked_list_node_key_prefix_length,
+              )
+
         and {
-          //The node must belong to the power users registry
-          ordered.prove_is_member(
-            power_users_linked_list_policy_id,
-            parsed_power_user_user_datum.key,
-            power_user_anchor_node_ref_input.output,
-          ),
           //Must be signed by the power user
           must_be_signed_by_credential(self, power_user_node_key),
-          //Check which field of the status we are changing
-          if state_to_change_index == 0 {
-            let expected_datum =
-              User {
-                is_verified: state_field_value,
-                is_blacklisted: input_datum.is_blacklisted,
+          //Ensure you're only modifying data, and validate permission logic
+          spend_for_updating_elements_data(
+            own_input_index,
+            own_output_index,
+            input_out_ref,
+            self.inputs,
+            self.outputs,
+            self.mint,
+            fn(_lovelace_change, _node_key, old_data, new_data) {
+              expect input_datum: User = old_data
+              expect output_user_status: User = new_data
+              //Check which field of the status we are changing
+              if state_to_change_index == 0 {
+                let expected_datum =
+                  User {
+                    is_verified: state_field_value,
+                    is_blacklisted: input_datum.is_blacklisted,
+                  }
+                and {
+                  //Must have permission
+                  power_user_data.can_verify,
+                  //Cannot verify a blacklisted user
+                  input_datum.is_blacklisted == False,
+                  output_user_status == expected_datum,
+                }
+              } else {
+                let expected_datum =
+                  User {
+                    is_verified: input_datum.is_verified,
+                    is_blacklisted: state_field_value,
+                  }
+                and {
+                  //Must have permission
+                  power_user_data.can_blacklist,
+                  //Cannot blacklist a verified user
+                  input_datum.is_verified == False,
+                  output_user_status == expected_datum,
+                }
               }
-            and {
-              //Must have permission
-              power_user_data.can_verify,
-              //Cannot verify a blacklisted user
-              input_datum.is_blacklisted == False,
-              output_user_status == expected_datum,
-            }
-          } else {
-            let expected_datum =
-              User {
-                is_verified: input_datum.is_verified,
-                is_blacklisted: state_field_value,
-              }
-            and {
-              //Must have permission
-              power_user_data.can_blacklist,
-              //Cannot blacklist a verified user
-              input_datum.is_verified == False,
-              output_user_status == expected_datum,
-            }
-          },
-          //Ensure you're only modifying data
-          ordered.modify_data(
-            node_mint,
-            own_input.output,
-            own_output,
-            users_linked_list_policy_id,
-            node_nft_asset_name,
-          ),
+            },
+          )
+            |> run_eval_with(
+                users_linked_list_policy_id,
+                constants.linked_list_root_key,
+                constants.linked_list_node_key_prefix,
+                constants.linked_list_node_key_prefix_length,
+              ),
         }
       }
     }
@@ -124,124 +126,187 @@ validator mint(
   power_users_linked_list_policy_id: ByteArray,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let node_in_outputs = get_node_inputs(self.inputs, policy_id)
-    let node_outputs = get_node_outputs(self.outputs, policy_id)
-    let node_mint = tokens(self.mint, policy_id)
     when redeemer is {
-      Init -> and {
-          //The init input must be spent
+      Init { root_output_index } -> {
+        let nonce_validated =
           list.any(
             self.inputs,
             fn(input) { input.output_reference == init_input_out_ref },
-          ),
-          ordered.init(node_outputs, node_mint, policy_id),
+          )
+        let root_output = utils.safe_list_at(self.outputs, root_output_index)
+        and {
+          //Only 1 token of this policy must be minted (the root NFT)
+
+          // FIXME: expensive
+          dict.size(tokens(self.mint, policy_id)) == 1,
+          init(nonce_validated, root_output, self.mint, fn(_, _) { True })
+            |> run_root_with(policy_id, constants.linked_list_root_key),
         }
-      Deinit -> ordered.deinit(node_in_outputs, node_mint, policy_id)
+      }
+      Deinit { root_input_index } -> {
+        let root_input = utils.safe_list_at(self.inputs, root_input_index)
+        and {
+          //Only 1 token of this policy must be burned (the root NFT)
+          dict.size(tokens(self.mint, policy_id)) == 1,
+          deinit(root_input, self.mint, fn(_, _) { True })
+            |> run_root_with(policy_id, constants.linked_list_root_key),
+        }
+      }
       AddUser {
         new_user_key,
-        appended_node_output_index,
+        anchor_node_input_index,
         anchor_node_output_index,
+        appended_node_output_index,
         power_user_node_ref_input_index,
-        power_user_anchor_node_ref_input_index,
       } -> {
         let power_user_ref_input =
           utils.safe_list_at(
             self.reference_inputs,
             power_user_node_ref_input_index,
           )
-        expect InlineDatum(power_user_user_datum) =
-          power_user_ref_input.output.datum
-        expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
-        expect power_user_data: PowerUser = parsed_power_user_user_datum.data
-        expect Key { key: power_user_node_key } =
-          parsed_power_user_user_datum.key
-        let power_user_anchor_node_ref_input =
-          utils.safe_list_at(
-            self.reference_inputs,
-            power_user_anchor_node_ref_input_index,
+
+        let (power_user_node_key, power_user_data) =
+          get_element_info(
+            power_user_ref_input.output,
+            fn(_lovelace, node_key, data, _link) {
+              expect Some(key) = node_key
+              expect power_user_data: PowerUser = data
+              (key, power_user_data)
+            },
           )
-        let inserted_node_output =
+            |> run_element_with(
+                power_users_linked_list_policy_id,
+                constants.linked_list_root_key,
+                constants.linked_list_node_key_prefix,
+                constants.linked_list_node_key_prefix_length,
+              )
+
+        let anchor_input =
+          utils.safe_list_at(self.inputs, anchor_node_input_index)
+        let anchor_output =
+          utils.safe_list_at(self.outputs, anchor_node_output_index)
+        let new_node_output =
           utils.safe_list_at(self.outputs, appended_node_output_index)
-        expect InlineDatum(users_status_datum) = inserted_node_output.datum
-        expect parsed_users_status_datum: NodeDatum = users_status_datum
-        //Datum must be of correct type
-        expect parsed_users_status_data: User = parsed_users_status_datum.data
+
         and {
-          //The node must belong to the power users registry
-          ordered.prove_is_member(
-            power_users_linked_list_policy_id,
-            parsed_power_user_user_datum.key,
-            power_user_anchor_node_ref_input.output,
-          ),
           //Must be signed by the power user
           must_be_signed_by_credential(self, power_user_node_key),
-          //User datum can be set depending on power user role
-          or {
-            and {
-              power_user_data.is_admin,
-              parsed_users_status_data == User {
-                is_verified: False,
-                is_blacklisted: False,
-              },
-            },
-            and {
-              power_user_data.can_verify,
-              parsed_users_status_data.is_blacklisted == False,
-            },
-            and {
-              power_user_data.can_blacklist,
-              parsed_users_status_data.is_verified == False,
-            },
-          },
+          //Only 1 token of this policy must be minted (prevents detached node forgery)
+          dict.size(tokens(self.mint, policy_id)) == 1,
           //User must be added into the user status list
-          ordered.insert(
-            Key(new_user_key),
-            appended_node_output_index,
-            anchor_node_output_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
+          insert_ascending(
+            anchor_input,
+            anchor_output,
+            new_node_output,
+            self.mint,
+            fn(
+              _lovelace_change,
+              _anchor_key,
+              _anchor_data,
+              _new_lovelace,
+              node_key,
+              node_data,
+              _link,
+            ) {
+              //Datum must be of correct type
+              expect parsed_users_status_data: User = node_data
+              and {
+                node_key == new_user_key,
+                //User datum can be set depending on power user role
+                or {
+                  and {
+                    power_user_data.is_admin,
+                    parsed_users_status_data == User {
+                      is_verified: False,
+                      is_blacklisted: False,
+                    },
+                  },
+                  and {
+                    power_user_data.can_verify,
+                    parsed_users_status_data.is_blacklisted == False,
+                  },
+                  and {
+                    power_user_data.can_blacklist,
+                    parsed_users_status_data.is_verified == False,
+                  },
+                },
+              }
+            },
+          )
+            |> run_eval_with(
+                policy_id,
+                constants.linked_list_root_key,
+                constants.linked_list_node_key_prefix,
+                constants.linked_list_node_key_prefix_length,
+              ),
         }
       }
       RemoveUser {
         user_key_to_remove,
-        removed_node_input_index,
         anchor_node_input_index,
+        removed_node_input_index,
+        anchor_node_output_index,
         admin_node_ref_input_index,
-        admin_anchor_node_ref_input_index,
       } -> {
         let admin_ref_input =
           utils.safe_list_at(self.reference_inputs, admin_node_ref_input_index)
-        expect InlineDatum(admin_datum) = admin_ref_input.output.datum
-        expect parsed_admin_datum: NodeDatum = admin_datum
-        expect admin_data: PowerUser = parsed_admin_datum.data
-        expect Key { key: admin_node_key } = parsed_admin_datum.key
-        let admin_anchor_node_ref_input =
-          utils.safe_list_at(
-            self.reference_inputs,
-            admin_anchor_node_ref_input_index,
+
+        let (admin_node_key, admin_data) =
+          get_element_info(
+            admin_ref_input.output,
+            fn(_lovelace, node_key, data, _link) {
+              expect Some(key) = node_key
+              expect admin_data: PowerUser = data
+              (key, admin_data)
+            },
           )
+            |> run_element_with(
+                power_users_linked_list_policy_id,
+                constants.linked_list_root_key,
+                constants.linked_list_node_key_prefix,
+                constants.linked_list_node_key_prefix_length,
+              )
+
+        let anchor_input =
+          utils.safe_list_at(self.inputs, anchor_node_input_index)
+        let removing_input =
+          utils.safe_list_at(self.inputs, removed_node_input_index)
+        let anchor_output =
+          utils.safe_list_at(self.outputs, anchor_node_output_index)
+
         and {
-          //The node must belong to the power users registry
-          ordered.prove_is_member(
-            power_users_linked_list_policy_id,
-            parsed_admin_datum.key,
-            admin_anchor_node_ref_input.output,
-          ),
           //Must be signed by the power user
           must_be_signed_by_credential(self, admin_node_key),
-          //Must be a admin
+          //Must be an admin
           admin_data.is_admin,
-          //User must be added into the user status list
-          ordered.remove(
-            Key(user_key_to_remove),
-            removed_node_input_index,
-            anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
+          //Only 1 token of this policy must be burned (prevents extra mint in same tx)
+          dict.size(tokens(self.mint, policy_id)) == 1,
+          //User must be removed from the user status list
+          remove(
+            anchor_input,
+            removing_input,
+            anchor_output,
+            self.mint,
+            fn(
+              _lovelace_change,
+              _anchor_key,
+              _anchor_data,
+              _rem_lovelace,
+              rem_key,
+              rem_data,
+              _link,
+            ) {
+              //Datum must be of correct type
+              expect _parsed: User = rem_data
+              rem_key == user_key_to_remove
+            },
+          )
+            |> run_eval_with(
+                policy_id,
+                constants.linked_list_root_key,
+                constants.linked_list_node_key_prefix,
+                constants.linked_list_node_key_prefix_length,
+              ),
         }
       }
     }

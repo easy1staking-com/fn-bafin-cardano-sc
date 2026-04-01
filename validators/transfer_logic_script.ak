@@ -1,9 +1,9 @@
 use aiken/builtin
 use aiken/collection/list
-use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
-use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
+use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
+use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/transaction.{InlineDatum, Transaction}
 use constants
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
 use types/users.{User}
@@ -68,7 +68,7 @@ validator transfer_logic_validator(
         ),
       )
 
-    //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal 
+    //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal
     //to the number of inputs (additional actions can be simply ignored)
     let all_token_inputs_can_be_spent =
       list.indexed_foldr(
@@ -87,24 +87,26 @@ validator transfer_logic_validator(
               self.reference_inputs,
               action.user_node_ref_input_index,
             )
-          expect InlineDatum(user_node_datum) = user_node_ref_input.output.datum
-          expect parsed_user_node_datum: NodeDatum = user_node_datum
-          expect user_state: User = parsed_user_node_datum.data
-          let prev_user_node_ref_input =
-            utils.safe_list_at(
-              self.reference_inputs,
-              action.user_anchor_node_ref_input_index,
+
+          let (user_node_key, user_state) =
+            get_element_info(
+              user_node_ref_input.output,
+              fn(_lovelace, node_key, data, _link) {
+                expect Some(key) = node_key
+                expect user_state: User = data
+                (key, user_state)
+              },
             )
+              |> run_element_with(
+                  users_linked_list_policy_id,
+                  constants.linked_list_root_key,
+                  constants.linked_list_node_key_prefix,
+                  constants.linked_list_node_key_prefix_length,
+                )
 
           and {
-            //The node must belong to the user state list
-            ordered.prove_is_member(
-              users_linked_list_policy_id,
-              parsed_user_node_datum.key,
-              prev_user_node_ref_input.output,
-            ),
             //Node must have the user credential hash
-            parsed_user_node_datum.key == Key { key: input_stake_cred_hash },
+            user_node_key == input_stake_cred_hash,
             //Tx must be signed by the user owning this utxo
             //Already done by CIP113 programmable_logic_global
             //User has been verified

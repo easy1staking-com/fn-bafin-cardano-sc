@@ -1,8 +1,8 @@
 use aiken/builtin
-use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
+use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential}
 use cardano/assets.{quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/transaction.{Transaction}
 use constants
 use types/minting_logic_script.{MintingLogicScriptWithdrawRedeemer}
 use types/power_users.{PowerUser}
@@ -47,25 +47,26 @@ validator minting_logic_validator(
         self.reference_inputs,
         redeemer.power_user_node_ref_input_index,
       )
-    expect InlineDatum(power_user_user_datum) =
-      power_user_ref_input.output.datum
-    expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
-    expect power_user_data: PowerUser = parsed_power_user_user_datum.data
-    expect Key { key: power_user_node_key } = parsed_power_user_user_datum.key
-    let power_user_anchor_node_ref_input =
-      utils.safe_list_at(
-        self.reference_inputs,
-        redeemer.power_user_anchor_node_ref_input_index,
+
+    let (power_user_node_key, power_user_data) =
+      get_element_info(
+        power_user_ref_input.output,
+        fn(_lovelace, node_key, data, _link) {
+          expect Some(key) = node_key
+          expect power_user_data: PowerUser = data
+          (key, power_user_data)
+        },
       )
+        |> run_element_with(
+            power_users_linked_list_policy_id,
+            constants.linked_list_root_key,
+            constants.linked_list_node_key_prefix,
+            constants.linked_list_node_key_prefix_length,
+          )
+
     and {
       //Redeemer contains the amount just for easy reference for eventual other contracts
       minted_amount == redeemer.minted_amount,
-      //The node must belong to the power users registry
-      ordered.prove_is_member(
-        power_users_linked_list_policy_id,
-        parsed_power_user_user_datum.key,
-        power_user_anchor_node_ref_input.output,
-      ),
       //global_state.spend must be called, so we check that the unique nft is spent
       quantity_of(
         global_state_input.output.value,

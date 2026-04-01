@@ -1,6 +1,5 @@
 pub type TransferLogicScriptAction {
   user_node_ref_input_index: Int,
-  user_anchor_node_ref_input_index: Int,
 }
 
 pub type TransferLogicScriptWithdrawRedeemer {

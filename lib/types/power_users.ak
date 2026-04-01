@@ -19,23 +19,25 @@ pub type PowerUser {
 pub type SpendRedeemer {
   StateTransition
   ModifyPowerUser {
+    own_input_index: Int,
     own_output_index: Int,
-    node_nft_asset_name: ByteArray,
     wanted_user_state: PowerUser,
   }
 }
 
 pub type MintRedeemer {
-  Init
-  Deinit
+  Init { root_output_index: Int }
+  Deinit { root_input_index: Int }
   AddPowerUser {
     new_power_user_key: ByteArray,
-    appended_node_output_index: Int,
+    anchor_node_input_index: Int,
     anchor_node_output_index: Int,
+    appended_node_output_index: Int,
   }
   RemovePowerUser {
     power_user_key_to_remove: ByteArray,
-    removed_node_input_index: Int,
     anchor_node_input_index: Int,
+    removed_node_input_index: Int,
+    anchor_node_output_index: Int,
   }
 }

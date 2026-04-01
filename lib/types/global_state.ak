@@ -16,7 +16,6 @@ pub type GlobalStateSpendAction {
   PauseTransfers {
     transfers_paused: Bool,
     power_user_node_ref_input_index: Int,
-    power_user_anchor_node_ref_input_index: Int,
   }
   ModifySecurityInfo { new_security_info: Data }
 }
