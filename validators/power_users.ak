@@ -46,7 +46,7 @@ validator power_users_validator(
             self.inputs,
             self.outputs,
             self.mint,
-            fn(_lovelace_change, _node_key, _old_data, new_data) {
+            fn(_lovelace_change, _node_key, _old_data, new_data, _link) {
               expect power_user_data: PowerUser = new_data
               power_user_data == wanted_user_state
             },
