@@ -1,40 +1,53 @@
-use aiken/builtin
+use aiken/cbor
+use aiken/collection/dict
+use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential}
-use cardano/assets.{quantity_of}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{Transaction}
 use constants
+use types/issuance.{IssuanceCborHex, apply_hashed_parameter}
 use types/minting_logic_script.{MintingLogicScriptWithdrawRedeemer}
 use types/power_users.{PowerUser}
-use utils.{must_be_signed_by_credential}
+use utils.{expect_inline_datum, must_be_signed_by_credential}
 
 validator minting_logic_validator(
+  issuance_cbor_hex_cs: PolicyId,
   security_asset_name: ByteArray,
-  config_policy_id: ByteArray,
   global_state_policy_id: ByteArray,
   power_users_linked_list_policy_id: ByteArray,
 ) {
   withdraw(
     redeemer: MintingLogicScriptWithdrawRedeemer,
-    _credential: Credential,
+    credential: Credential,
     self: Transaction,
   ) {
-    let config =
-      utils.get_config_as_data_list(
-        utils.safe_list_at(
-          self.reference_inputs,
-          redeemer.config_ref_input_index,
-        ),
-        config_policy_id,
-        constants.config_asset_name,
-      )
-
     // you should be able to calculate policy id reproducing the same steps that the registry mint does.
     // The reason why I think this should work: https://github.com/cardano-foundation/cip113-programmable-tokens/blob/main/src/programmable-tokens-onchain-aiken/validators/registry_mint.ak#L72-L79
     // is that if an attacker is spoofing the issuance utxo, it won't be anyway a registered programmable token (ie. there won't be an entry in the registry),
     // BUT if the correct issuance is used, because of invoking the proper issuance contract, the token will actually be a programmable token
     // which can be registered accordingly
-    let issuance_policy_id = builtin.un_b_data(utils.safe_list_at(config, 0))
+
+    expect Some(issuance_ref_input) =
+      //should this be a find.any instead of find.some?
+      list.find(
+        self.reference_inputs,
+        fn(input) {
+          let tokens = assets.tokens(input.output.value, issuance_cbor_hex_cs)
+          !dict.is_empty(tokens)
+        },
+      )
+
+    // Extract the IssuanceCborHex datum
+    let issuance_datum = expect_inline_datum(issuance_ref_input.output)
+    expect issuance_cbor: IssuanceCborHex = issuance_datum
+
+    let issuance_policy_id =
+      apply_hashed_parameter(
+        issuance_cbor.prefix_cbor_hex,
+        issuance_cbor.postfix_cbor_hex,
+        cbor.serialise(credential),
+      )
 
     let global_state_input =
       utils.safe_list_at(self.inputs, redeemer.global_state_input_index)

@@ -9,6 +9,8 @@ use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
 use types/users.{User}
 use utils
 
+// issuance_logic_script_hash
+
 validator transfer_logic_validator(
   // we don't need this if the asset name is always ONE and it's a parameters of the minting script, which will lead to the policy id itself changing.
   security_asset_name: ByteArray,

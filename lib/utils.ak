@@ -48,3 +48,8 @@ pub fn get_config_as_data_list(
   expect InlineDatum(output_datum) = config_ref_input.output.datum
   builtin.unconstr_fields(output_datum)
 }
+
+pub fn expect_inline_datum(output: Output) -> Data {
+  expect InlineDatum(d) = output.datum
+  d
+}
