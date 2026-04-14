@@ -3,13 +3,14 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/transaction.{InlineDatum, Transaction}
+use cardano/transaction.{InlineDatum, Input, Transaction}
 use constants
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
 use types/users.{User}
 use utils
 
 validator transfer_logic_validator(
+  // we don't need this if the asset name is always ONE and it's a parameters of the minting script, which will lead to the policy id itself changing.
   security_asset_name: ByteArray,
   global_state_policy_id: ByteArray,
   users_linked_list_policy_id: ByteArray,
@@ -20,29 +21,16 @@ validator transfer_logic_validator(
     _credential: Credential,
     self: Transaction,
   ) {
-    let global_state_ref_input =
-      utils.safe_list_at(
+    let global_state_ok =
+      is_global_state_ok(
         self.reference_inputs,
         redeemer.global_state_ref_input_index,
+        global_state_policy_id,
       )
-    expect InlineDatum(global_state_datum) = global_state_ref_input.output.datum
-    //Efficient retrieval of the transfers_paused field
-    let transfers_paused =
-      builtin.unconstr_index(builtin.unconstr_fields(global_state_datum)) == 1
-
-    let global_state_ok = and {
-        //Global State must have the correct NFT
-        quantity_of(
-          global_state_ref_input.output.value,
-          global_state_policy_id,
-          constants.global_state_asset_name,
-        ) > 0,
-        //General transfers of this token must NOT be paused
-        transfers_paused == False,
-      }
 
     //Collect unique input stake_cred that must be verified
     let inputs_user_stake_cred_hash =
+      // ah there it is the dedup, is it costly?
       list.unique(
         list.foldr(
           self.inputs,
@@ -126,5 +114,29 @@ validator transfer_logic_validator(
 
   else(_) {
     fail
+  }
+}
+
+fn is_global_state_ok(
+  reference_inputs: List<Input>,
+  global_state_ref_input_index: Int,
+  global_state_policy_id: ByteArray,
+) {
+  let global_state_ref_input =
+    utils.safe_list_at(reference_inputs, global_state_ref_input_index)
+  expect InlineDatum(global_state_datum) = global_state_ref_input.output.datum
+  //Efficient retrieval of the transfers_paused field
+  let transfers_paused =
+    builtin.unconstr_index(builtin.unconstr_fields(global_state_datum)) == 1
+
+  and {
+    //Global State must have the correct NFT
+    quantity_of(
+      global_state_ref_input.output.value,
+      global_state_policy_id,
+      constants.global_state_asset_name,
+    ) > 0,
+    //General transfers of this token must NOT be paused
+    transfers_paused == False,
   }
 }

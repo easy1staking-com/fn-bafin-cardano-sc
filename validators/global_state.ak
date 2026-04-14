@@ -115,10 +115,7 @@ validator global_state_spend_validator(
           own_input.output.value == global_state_output.value,
         }
       }
-      PauseTransfers {
-        transfers_paused,
-        power_user_node_ref_input_index,
-      } -> {
+      PauseTransfers { transfers_paused, power_user_node_ref_input_index } -> {
         let power_user_node_ref_input =
           utils.safe_list_at(
             self.reference_inputs,
