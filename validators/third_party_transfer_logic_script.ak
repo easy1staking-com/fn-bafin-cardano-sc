@@ -2,6 +2,7 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
+use cardano/certificate.{Certificate}
 use cardano/transaction.{Transaction}
 use constants
 use types/power_users.{PowerUser}
@@ -111,6 +112,10 @@ validator third_party_transfer_logic_validator(
       power_user_data.can_force_transfer,
       must_be_signed_by_credential(self, power_user_node_key),
     }
+  }
+
+  publish(_r: Data, _c: Certificate, _s: Transaction) {
+    True
   }
 
   else(_) {

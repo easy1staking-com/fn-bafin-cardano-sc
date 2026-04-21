@@ -3,6 +3,7 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
+use cardano/certificate.{Certificate}
 use cardano/transaction.{InlineDatum, Input, Transaction}
 use constants
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
@@ -112,6 +113,10 @@ validator transfer_logic_validator(
       all_token_inputs_can_be_spent,
       global_state_ok,
     }
+  }
+
+  publish(_r: Data, _c: Certificate, _s: Transaction) {
+    True
   }
 
   else(_) {
