@@ -1,5 +1,7 @@
 use aiken/builtin
 
+pub const issuance_cbor_hex_token_name = "IssuanceCborHex"
+
 pub type IssuanceCborHex {
   /// Prefix bytes of the minting policy script
   prefix_cbor_hex: ByteArray,

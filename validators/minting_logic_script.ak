@@ -1,18 +1,21 @@
-use aiken/cbor
-use aiken/collection/dict
 use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
-use cardano/address.{Credential}
+use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{Transaction}
 use constants
-use types/issuance.{IssuanceCborHex, apply_hashed_parameter}
-use types/minting_logic_script.{MintingLogicScriptWithdrawRedeemer}
+use env
+use types/issuance.{
+  IssuanceCborHex, apply_hashed_parameter, issuance_cbor_hex_token_name,
+}
+use types/minting_logic_script.{
+  GlobalStateOutputIndex, GlobalStateReferenceInput,
+  MintingLogicScriptWithdrawRedeemer,
+}
 use types/power_users.{PowerUser}
 use utils.{expect_inline_datum, must_be_signed_by_credential}
 
 validator minting_logic_validator(
-  issuance_cbor_hex_cs: PolicyId,
   security_asset_name: ByteArray,
   global_state_policy_id: ByteArray,
   power_users_linked_list_policy_id: ByteArray,
@@ -22,35 +25,23 @@ validator minting_logic_validator(
     credential: Credential,
     self: Transaction,
   ) {
-    // you should be able to calculate policy id reproducing the same steps that the registry mint does.
-    // The reason why I think this should work: https://github.com/cardano-foundation/cip113-programmable-tokens/blob/main/src/programmable-tokens-onchain-aiken/validators/registry_mint.ak#L72-L79
-    // is that if an attacker is spoofing the issuance utxo, it won't be anyway a registered programmable token (ie. there won't be an entry in the registry),
-    // BUT if the correct issuance is used, because of invoking the proper issuance contract, the token will actually be a programmable token
-    // which can be registered accordingly
-
-    expect Some(issuance_ref_input) =
-      //should this be a find.any instead of find.some?
-      list.find(
-        self.reference_inputs,
-        fn(input) {
-          let tokens = assets.tokens(input.output.value, issuance_cbor_hex_cs)
-          !dict.is_empty(tokens)
-        },
-      )
-
-    // Extract the IssuanceCborHex datum
-    let issuance_datum = expect_inline_datum(issuance_ref_input.output)
-    expect issuance_cbor: IssuanceCborHex = issuance_datum
-
+    expect Script(hashed_params) = credential
     let issuance_policy_id =
-      apply_hashed_parameter(
-        issuance_cbor.prefix_cbor_hex,
-        issuance_cbor.postfix_cbor_hex,
-        cbor.serialise(credential),
-      )
+      derive_token_policy(self, env.issuance_cbor_hex_policy_id, hashed_params)
+    trace @"mint": self.mint
+    trace @"issuance_policy_id": issuance_policy_id
 
-    let global_state_input =
-      utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
+    let global_state_value =
+      when redeemer.global_state_reference is {
+        GlobalStateReferenceInput { index } -> {
+          let global_state_input = utils.safe_list_at(self.inputs, index)
+          global_state_input.output.value
+        }
+        GlobalStateOutputIndex { index } -> {
+          let global_state_output = utils.safe_list_at(self.outputs, index)
+          global_state_output.value
+        }
+      }
 
     let minted_amount =
       quantity_of(self.mint, issuance_policy_id, security_asset_name)
@@ -77,28 +68,59 @@ validator minting_logic_validator(
             constants.linked_list_node_key_prefix_length,
           )
 
+    trace @"minted_amount": minted_amount
+    trace @"redeemer.minted_amount": redeemer.minted_amount
+
     and {
       //Redeemer contains the amount just for easy reference for eventual other contracts
-      minted_amount == redeemer.minted_amount,
+      (minted_amount == redeemer.minted_amount)?,
       //global_state.spend must be called, so we check that the unique nft is spent
-      quantity_of(
-        global_state_input.output.value,
+      (quantity_of(
+        global_state_value,
         global_state_policy_id,
         constants.global_state_asset_name,
-      ) > 0,
+      ) > 0)?,
       //A power user must have signed the transaction
-      must_be_signed_by_credential(self, power_user_node_key),
+      must_be_signed_by_credential(self, power_user_node_key)?,
       //If minted_amount > 0, power user must be minter
       //If minted_amount < 0, power user must be burner
       if minted_amount > 0 {
         power_user_data.can_mint
       } else {
         power_user_data.can_burn
-      },
+      }?,
     }
   }
 
   else(_) {
     fail
   }
+}
+
+fn derive_token_policy(
+  self: Transaction,
+  issuance_cbor_hex_cs: PolicyId,
+  hashed_param: ByteArray,
+) -> PolicyId {
+  expect Some(issuance_ref_input) =
+    list.find(
+      self.reference_inputs,
+      fn(input) {
+        assets.has_nft_strict(
+          input.output.value,
+          issuance_cbor_hex_cs,
+          issuance_cbor_hex_token_name,
+        )
+      },
+    )
+
+  // Extract the IssuanceCborHex datum
+  let issuance_datum = expect_inline_datum(issuance_ref_input.output)
+  expect issuance_cbor: IssuanceCborHex = issuance_datum
+
+  apply_hashed_parameter(
+    issuance_cbor.prefix_cbor_hex,
+    issuance_cbor.postfix_cbor_hex,
+    hashed_param,
+  )
 }
