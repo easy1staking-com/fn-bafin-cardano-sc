@@ -44,6 +44,17 @@ validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
   }
 }
 
+// INVARIANT: the global_state NFT must never leave this script address.
+// Every branch below preserves `global_state_output.address.payment_credential
+// == own_input.output.address.payment_credential`. If you add a new branch, you
+// MUST preserve this — it's what `minting_logic_script` relies on to prove that
+// NFT-in-output implies this spend validator ran.
+//
+// INVARIANT: non-Mint branches MUST reject concurrent security-token mints.
+// Together with the minting_logic_script output-branch genesis guard, this is
+// what makes `mintable_amount` a truly binding supply cap: the only way to
+// mint a security token in steady state is through MintSecurity, which
+// decrements `mintable_amount`.
 validator global_state_spend_validator(
   // statically setting `owner_credential_hash` here is imho not the best. it should be an attribute of the datum in teh global utxo
   // so that i can be rotated, the nft policy id guarding the utxo should be used as paramter for indirection.
@@ -116,6 +127,10 @@ validator global_state_spend_validator(
         }
       }
       PauseTransfers { transfers_paused, power_user_node_ref_input_index } -> {
+        // Reject concurrent security mint: only MintSecurity may accompany
+        // a security-token mint, because only MintSecurity decrements the cap.
+        expect
+          quantity_of(self.mint, issuance_policy_id, security_asset_name) == 0
         let power_user_node_ref_input =
           utils.safe_list_at(
             self.reference_inputs,
@@ -160,6 +175,9 @@ validator global_state_spend_validator(
         }
       }
       ModifySecurityInfo { new_security_info } -> {
+        // Reject concurrent security mint: see PauseTransfers comment.
+        expect
+          quantity_of(self.mint, issuance_policy_id, security_asset_name) == 0
         let expected_datum =
           GlobalStateDatum {
             transfers_paused: input_datum.transfers_paused,
