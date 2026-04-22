@@ -1,11 +1,11 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/certificate.{Certificate, RegisterCredential}
-use cardano/transaction.{InlineDatum, Input, Transaction}
+use cardano/transaction.{Transaction}
 use constants
+use types/global_state
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
 use types/users.{User}
 use utils
@@ -24,12 +24,16 @@ validator transfer_logic_validator(
     _credential: Credential,
     self: Transaction,
   ) {
-    let global_state_ok =
-      is_global_state_ok(
+    // Resolve the GS reference input. `is_paused` (in types/global_state)
+    // asserts the NFT is present and returns the `transfers_paused` flag via
+    // UPLC builtins (no full-datum deserialisation).
+    let gs_input =
+      utils.safe_list_at(
         self.reference_inputs,
         redeemer.global_state_ref_input_index,
-        global_state_policy_id,
       )
+    let transfers_paused =
+      global_state.is_paused(gs_input, global_state_policy_id)
 
     //Collect unique input stake_cred that must be verified
     let inputs_user_stake_cred_hash =
@@ -111,7 +115,8 @@ validator transfer_logic_validator(
     and {
       //Outputs are already checked by programmable_logic_base
       all_token_inputs_can_be_spent,
-      global_state_ok,
+      //General transfers of this token must NOT be paused
+      transfers_paused == False,
     }
   }
 
@@ -131,26 +136,3 @@ validator transfer_logic_validator(
   }
 }
 
-fn is_global_state_ok(
-  reference_inputs: List<Input>,
-  global_state_ref_input_index: Int,
-  global_state_policy_id: ByteArray,
-) {
-  let global_state_ref_input =
-    utils.safe_list_at(reference_inputs, global_state_ref_input_index)
-  expect InlineDatum(global_state_datum) = global_state_ref_input.output.datum
-  //Efficient retrieval of the transfers_paused field
-  let transfers_paused =
-    builtin.unconstr_index(builtin.unconstr_fields(global_state_datum)) == 1
-
-  and {
-    //Global State must have the correct NFT
-    quantity_of(
-      global_state_ref_input.output.value,
-      global_state_policy_id,
-      constants.global_state_asset_name,
-    ) > 0,
-    //General transfers of this token must NOT be paused
-    transfers_paused == False,
-  }
-}
