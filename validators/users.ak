@@ -87,6 +87,8 @@ validator users_validator(
                   power_user_data.can_verify,
                   //Cannot verify a blacklisted user
                   input_datum.is_blacklisted == False,
+                  //Must be an actual state change (reject no-op churn)
+                  input_datum.is_verified != state_field_value,
                   output_user_status == expected_datum,
                 }
               } else {
@@ -100,6 +102,8 @@ validator users_validator(
                   power_user_data.can_blacklist,
                   //Cannot blacklist a verified user
                   input_datum.is_verified == False,
+                  //Must be an actual state change (reject no-op churn)
+                  input_datum.is_blacklisted != state_field_value,
                   output_user_status == expected_datum,
                 }
               }
