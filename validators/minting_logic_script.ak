@@ -2,7 +2,7 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/certificate.{Certificate}
+use cardano/certificate.{Certificate, RegisterCredential}
 use cardano/transaction.{Transaction}
 use constants
 use env
@@ -126,8 +126,17 @@ validator minting_logic_validator(
     }
   }
 
-  publish(_r: Data, _c: Certificate, _s: Transaction) {
-    True
+  // Whitelist RegisterCredential only. Rejecting UnregisterCredential prevents
+  // a ~2 ADA griefing DoS: a rubber-stamp publish would allow anyone to
+  // de-register this script's stake credential, which would brick every
+  // withdraw-zero mint/burn until re-registered. Also rejects delegation and
+  // DRep/committee cert types — this credential exists solely for withdraw-0.
+  // Tradeoff: the stake credential becomes permanent (2 ADA locked forever).
+  publish(_r: Data, c: Certificate, _s: Transaction) {
+    when c is {
+      RegisterCredential { .. } -> True
+      _ -> False
+    }
   }
 
   else(_) {

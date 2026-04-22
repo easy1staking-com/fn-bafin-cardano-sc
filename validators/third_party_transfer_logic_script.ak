@@ -2,7 +2,7 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/certificate.{Certificate}
+use cardano/certificate.{Certificate, RegisterCredential}
 use cardano/transaction.{Transaction}
 use constants
 use types/power_users.{PowerUser}
@@ -114,8 +114,14 @@ validator third_party_transfer_logic_validator(
     }
   }
 
-  publish(_r: Data, _c: Certificate, _s: Transaction) {
-    True
+  // Whitelist RegisterCredential only — see minting_logic_script for rationale.
+  // A rubber-stamp publish would let anyone de-register this script's stake
+  // credential, bricking every force-transfer until re-registered.
+  publish(_r: Data, c: Certificate, _s: Transaction) {
+    when c is {
+      RegisterCredential { .. } -> True
+      _ -> False
+    }
   }
 
   else(_) {

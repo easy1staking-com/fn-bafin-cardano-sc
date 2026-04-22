@@ -3,7 +3,7 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/certificate.{Certificate}
+use cardano/certificate.{Certificate, RegisterCredential}
 use cardano/transaction.{InlineDatum, Input, Transaction}
 use constants
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
@@ -115,8 +115,15 @@ validator transfer_logic_validator(
     }
   }
 
-  publish(_r: Data, _c: Certificate, _s: Transaction) {
-    True
+  // Whitelist RegisterCredential only — see minting_logic_script for rationale.
+  // A rubber-stamp publish would let anyone de-register this script's stake
+  // credential via UnregisterCredential, bricking every transfer until
+  // re-registered (and paying the attacker the 2 ADA deposit refund).
+  publish(_r: Data, c: Certificate, _s: Transaction) {
+    when c is {
+      RegisterCredential { .. } -> True
+      _ -> False
+    }
   }
 
   else(_) {
