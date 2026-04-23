@@ -30,8 +30,6 @@ validator minting_logic_validator(
     expect Script(hashed_params) = credential
     let issuance_policy_id =
       derive_token_policy(self, env.issuance_cbor_hex_policy_id, hashed_params)
-    trace @"mint": self.mint
-    trace @"issuance_policy_id": issuance_policy_id
 
     let minted_amount =
       quantity_of(self.mint, issuance_policy_id, security_asset_name)
@@ -107,9 +105,6 @@ validator minting_logic_validator(
             constants.linked_list_node_key_prefix,
             constants.linked_list_node_key_prefix_length,
           )
-
-    trace @"minted_amount": minted_amount
-    trace @"redeemer.minted_amount": redeemer.minted_amount
 
     and {
       //Redeemer contains the amount just for easy reference for eventual other contracts

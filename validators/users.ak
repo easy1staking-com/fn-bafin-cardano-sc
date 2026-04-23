@@ -126,6 +126,7 @@ validator users_validator(
 }
 
 validator mint(
+  owner_credential_hash: ByteArray,
   init_input_out_ref: OutputReference,
   power_users_linked_list_policy_id: ByteArray,
 ) {
@@ -150,6 +151,10 @@ validator mint(
       Deinit { root_input_index } -> {
         let root_input = utils.safe_list_at(self.inputs, root_input_index)
         and {
+          // L-6: Deinit must require owner signature — see power_users.ak
+          // for rationale. Without this guard anyone can grief the operator
+          // by burning the users-LL root between init and first AddUser.
+          must_be_signed_by_credential(self, owner_credential_hash),
           //Only 1 token of this policy must be burned (the root NFT)
           dict.size(tokens(self.mint, policy_id)) == 1,
           deinit(root_input, self.mint, fn(_, _) { True })

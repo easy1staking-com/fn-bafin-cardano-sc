@@ -91,6 +91,12 @@ validator mint(
         let root_input =
           utils.safe_list_at(self.inputs, root_input_index)
         and {
+          // L-6: Deinit must require owner signature. Without this, anyone
+          // can burn the root NFT while the list is empty (the only window
+          // the library's `deinit` allows — see `element_link == None` check)
+          // — which brackets the attack window right after LL init, before
+          // the first AddPowerUser tx. Griefs the operator into re-bootstrap.
+          must_be_signed_by_credential(self, owner_credential_hash),
           //Only 1 token of this policy must be burned (the root NFT)
           dict.size(tokens(self.mint, policy_id)) == 1,
           deinit(root_input, self.mint, fn(_, _) { True })
