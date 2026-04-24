@@ -6,14 +6,10 @@ use cardano/certificate.{Certificate, RegisterCredential}
 use cardano/transaction.{Transaction}
 use constants
 use env
-use types/global_state.{GlobalStateDatum}
 use types/issuance.{
   IssuanceCborHex, apply_hashed_parameter, issuance_cbor_hex_token_name,
 }
-use types/minting_logic_script.{
-  GlobalStateInput, GlobalStateOutputIndex,
-  MintingLogicScriptWithdrawRedeemer,
-}
+use types/minting_logic_script.{MintingLogicScriptWithdrawRedeemer}
 use types/power_users.{PowerUser}
 use utils.{expect_inline_datum, must_be_signed_by_credential}
 
@@ -34,55 +30,20 @@ validator minting_logic_validator(
     let minted_amount =
       quantity_of(self.mint, issuance_policy_id, security_asset_name)
 
-    // Validate GS presence per branch. The GS NFT is pinned to the GS spend
-    // script address (invariant enforced in global_state.ak), so NFT-in-input
-    // implies the spend validator ran, and NFT-in-output in the absence of an
-    // NFT-carrying input implies the GS mint validator ran (genesis only).
-    when redeemer.global_state_reference is {
-      GlobalStateInput { index } -> {
-        // Steady state: GS is being spent. Its spend validator runs; and by
-        // the non-Mint-branches-reject-mint invariant in global_state.ak,
-        // MintSecurity is the only branch compatible with a security mint,
-        // which enforces `mintable_amount - minted_amount >= 0`.
-        let gs_input = utils.safe_list_at(self.inputs, index)
-        expect
-          quantity_of(
-            gs_input.output.value,
-            global_state_policy_id,
-            constants.global_state_asset_name,
-          ) == 1
-      }
-      GlobalStateOutputIndex { index } -> {
-        // Genesis (registration): GS is freshly minted in this tx. There is
-        // no prior cap to decrement. We still enforce:
-        //   (a) NFT really appears in the referenced output,
-        //   (b) NFT does NOT appear on any input (forces steady-state mints
-        //       to use the input branch — where the cap is truly enforced),
-        //   (c) minted_amount <= initial mintable_amount written to the GS
-        //       output datum (uniform cap semantics across genesis + steady).
-        let gs_output = utils.safe_list_at(self.outputs, index)
-        expect
-          quantity_of(
-            gs_output.value,
-            global_state_policy_id,
-            constants.global_state_asset_name,
-          ) == 1
-        expect
-          !list.any(
-            self.inputs,
-            fn(i) {
-              quantity_of(
-                i.output.value,
-                global_state_policy_id,
-                constants.global_state_asset_name,
-              ) == 1
-            },
-          )
-        let gs_datum_raw = expect_inline_datum(gs_output)
-        expect gs_datum: GlobalStateDatum = gs_datum_raw
-        expect minted_amount <= gs_datum.mintable_amount
-      }
-    }
+    // GS is always spent during a mint under the Track 4 design (GS minted at
+    // initCompliance; register spends-and-updates it via the MintSecurity
+    // branch, which enforces the supply cap). This validator only needs to
+    // assert the GS NFT is actually on the referenced input — NFT presence on
+    // an input implies the GS spend validator is running; by the non-Mint-
+    // branches-reject-mint invariant in global_state.ak, only the MintSecurity
+    // branch permits a security-token mint — and it decrements `mintable_amount`.
+    let gs_input = utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
+    expect
+      quantity_of(
+        gs_input.output.value,
+        global_state_policy_id,
+        constants.global_state_asset_name,
+      ) == 1
 
     let power_user_ref_input =
       utils.safe_list_at(

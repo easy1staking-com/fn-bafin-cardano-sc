@@ -1,22 +1,30 @@
 use aiken/collection/list
-use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/certificate.{Certificate, RegisterCredential}
-use cardano/transaction.{Transaction}
-use constants
-use types/global_state
+use cardano/transaction.{InlineDatum, Transaction}
+use denylist/absence.{verify_denylist_absence}
+use env
+use kyc/verify.{verify_kyc_proof}
+use types/global_state.{GlobalStateDatum}
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
-use types/users.{User}
 use utils
 
-// issuance_logic_script_hash
-
+/// Transfer logic for a BAFIN security token (Track 4, TEL+denylist model).
+///
+/// Per-input check (for each unique sender stake credential):
+///   1. The redeemer's matching KYC proof validates against GS.trusted_entity_vkeys
+///      (signature + payload fields + TTL + tier + network + security binding).
+///   2. The sender is NOT in the denylist (covering-node absence proof).
+///
+/// Per-output check (for each unique destination stake credential):
+///   3. The destination is NOT in the denylist. No KYC required — receiving
+///      is gated only by denylist absence.
+///
+/// Plus the pause gate (GS must not be paused).
 validator transfer_logic_validator(
-  // we don't need this if the asset name is always ONE and it's a parameters of the minting script, which will lead to the policy id itself changing.
   security_asset_name: ByteArray,
   global_state_policy_id: ByteArray,
-  users_linked_list_policy_id: ByteArray,
   issuance_policy_id: PolicyId,
 ) {
   withdraw(
@@ -24,9 +32,7 @@ validator transfer_logic_validator(
     _credential: Credential,
     self: Transaction,
   ) {
-    // Resolve the GS reference input. `is_paused` (in types/global_state)
-    // asserts the NFT is present and returns the `transfers_paused` flag via
-    // UPLC builtins (no full-datum deserialisation).
+    // 1. Resolve GS reference input and fast-check pause flag.
     let gs_input =
       utils.safe_list_at(
         self.reference_inputs,
@@ -35,9 +41,13 @@ validator transfer_logic_validator(
     let transfers_paused =
       global_state.is_paused(gs_input, global_state_policy_id)
 
-    //Collect unique input stake_cred that must be verified
+    // 2. Full-parse GS datum so we can read the TEL and denylist policy id.
+    expect InlineDatum(gs_datum_raw) = gs_input.output.datum
+    expect gs_datum: GlobalStateDatum = gs_datum_raw
+
+    // 3. Aggregate unique sender stake-cred hashes from inputs carrying the
+    //    security token.
     let inputs_user_stake_cred_hash =
-      // ah there it is the dedup, is it costly?
       list.unique(
         list.foldr(
           self.inputs,
@@ -63,60 +73,104 @@ validator transfer_logic_validator(
         ),
       )
 
-    //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal
-    //to the number of inputs (additional actions can be simply ignored)
-    let all_token_inputs_can_be_spent =
+    // 4. Aggregate unique destination stake-cred hashes from outputs carrying
+    //    the security token.
+    let outputs_user_stake_cred_hash =
+      list.unique(
+        list.foldr(
+          self.outputs,
+          [],
+          fn(output, result) {
+            if quantity_of(
+              output.value,
+              issuance_policy_id,
+              security_asset_name,
+            ) > 0 {
+              expect Some(Inline(stake_cred)) = output.address.stake_credential
+              let credential_hash =
+                when stake_cred is {
+                  VerificationKey(hash) -> hash
+                  Script(hash) -> hash
+                }
+              list.push(result, credential_hash)
+            } else {
+              result
+            }
+          },
+        ),
+      )
+
+    // 5. Per-sender: valid KYC proof + denylist absence.
+    let all_senders_ok =
       list.indexed_foldr(
         inputs_user_stake_cred_hash,
         True,
-        fn(index, input_stake_cred_hash, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
-
+        fn(index, sender_pkh, acc) {
+          expect acc
           let action =
             utils.safe_list_at(redeemer.actions_for_each_input, index)
-
-          let user_node_ref_input =
-            utils.safe_list_at(
+          let kyc_ok =
+            verify_kyc_proof(
+              action.source_proof,
+              sender_pkh,
+              gs_datum,
+              issuance_policy_id,
+              env.network_id,
+              self,
+            )
+          let denylist_ok =
+            verify_denylist_absence(
+              sender_pkh,
+              action.source_denylist_covering_ref_input_index,
               self.reference_inputs,
-              action.user_node_ref_input_index,
+              gs_datum.denylist_linked_list_policy_id,
             )
-
-          let (user_node_key, user_state) =
-            get_element_info(
-              user_node_ref_input.output,
-              fn(_lovelace, node_key, data, _link) {
-                expect Some(key) = node_key
-                expect user_state: User = data
-                (key, user_state)
-              },
-            )
-              |> run_element_with(
-                  users_linked_list_policy_id,
-                  constants.linked_list_root_key,
-                  constants.linked_list_node_key_prefix,
-                  constants.linked_list_node_key_prefix_length,
-                )
-
           and {
-            //Node must have the user credential hash
-            user_node_key == input_stake_cred_hash,
-            //Tx must be signed by the user owning this utxo
-            //Already done by CIP113 programmable_logic_global
-            //User has been verified
-            user_state.is_verified == True,
-            //User is not blacklisted
-            user_state.is_blacklisted == False,
+            kyc_ok,
+            denylist_ok,
+          }
+        },
+      )
+
+    // 6. Per-destination: valid KYC proof + denylist absence. Swiss CO
+    //    Art. 973e / eWpG §14 / ERC-3643 norm all demand that the recipient
+    //    be KYC'd at transfer time (a named creditor / registered holder).
+    let all_destinations_ok =
+      list.indexed_foldr(
+        outputs_user_stake_cred_hash,
+        True,
+        fn(index, dest_pkh, acc) {
+          expect acc
+          let action =
+            utils.safe_list_at(redeemer.destination_actions, index)
+          let kyc_ok =
+            verify_kyc_proof(
+              action.destination_proof,
+              dest_pkh,
+              gs_datum,
+              issuance_policy_id,
+              env.network_id,
+              self,
+            )
+          let denylist_ok =
+            verify_denylist_absence(
+              dest_pkh,
+              action.destination_denylist_covering_ref_input_index,
+              self.reference_inputs,
+              gs_datum.denylist_linked_list_policy_id,
+            )
+          and {
+            kyc_ok,
+            denylist_ok,
           }
         },
       )
 
     and {
-      //Outputs are already checked by programmable_logic_base
-      all_token_inputs_can_be_spent,
       //General transfers of this token must NOT be paused
       transfers_paused == False,
+      all_senders_ok,
+      all_destinations_ok,
     }
   }
 
@@ -135,4 +189,3 @@ validator transfer_logic_validator(
     fail
   }
 }
-
