@@ -82,8 +82,7 @@ validator third_party_transfer_logic_validator(
         True,
         fn(index, dest_pkh, acc) {
           expect acc
-          let action =
-            utils.safe_list_at(redeemer.destination_actions, index)
+          let action = utils.safe_list_at(redeemer.destination_actions, index)
           let kyc_ok =
             verify_kyc_proof(
               action.destination_proof,

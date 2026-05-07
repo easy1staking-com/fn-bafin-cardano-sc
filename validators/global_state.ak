@@ -53,23 +53,14 @@ fn is_sorted_no_dup_vkeys(
   }
 }
 
-fn sanitise_initial_datum(
-  datum: GlobalStateDatum,
-  self_mint: Value,
-) -> Bool {
+fn sanitise_initial_datum(datum: GlobalStateDatum, self_mint: Value) -> Bool {
   and {
     !datum.transfers_paused,
     datum.mintable_amount >= 0,
     bytearray.length(datum.admin_credential_hash) == 28,
     // power_users LL root and denylist LL root must be minted in this tx
-    quantity_of_policy_id(
-      self_mint,
-      datum.power_user_linked_list_policy_id,
-    ) >= 1,
-    quantity_of_policy_id(
-      self_mint,
-      datum.denylist_linked_list_policy_id,
-    ) >= 1,
+    quantity_of_policy_id(self_mint, datum.power_user_linked_list_policy_id) >= 1,
+    quantity_of_policy_id(self_mint, datum.denylist_linked_list_policy_id) >= 1,
     is_sorted_no_dup_vkeys(datum.trusted_entity_vkeys),
   }
 }
@@ -312,10 +303,7 @@ validator global_state_spend_validator(
       RemoveTrustedEntity { vkey } -> {
         let has_key = pairs.has_key(input_datum.trusted_entity_vkeys, vkey)
         let updated_entities =
-          list.filter(
-            input_datum.trusted_entity_vkeys,
-            fn(p) { p.1st != vkey },
-          )
+          list.filter(input_datum.trusted_entity_vkeys, fn(p) { p.1st != vkey })
         let expected_datum =
           GlobalStateDatum {
             transfers_paused: input_datum.transfers_paused,

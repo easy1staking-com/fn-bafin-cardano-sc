@@ -46,10 +46,10 @@ pub const width_valid_until_ms: Int = 8
 pub const width_security_policy_id: Int = 28
 
 // Tier values (for documentation — validator only checks != 0x00 in v1)
-pub const tier_invalid: Int = 0x00
+pub const tier_invalid: Int = 0x0
 
-pub const tier_user: Int = 0x01
+pub const tier_user: Int = 0x1
 
-pub const tier_institutional: Int = 0x02
+pub const tier_institutional: Int = 0x2
 
-pub const tier_vlei: Int = 0x03
+pub const tier_vlei: Int = 0x3

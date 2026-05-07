@@ -63,8 +63,7 @@ pub fn verify_kyc_proof(
           offset_security_policy_id,
           width_security_policy_id,
         )
-      let payload_network =
-        builtin.index_bytearray(payload, offset_network_id)
+      let payload_network = builtin.index_bytearray(payload, offset_network_id)
 
       let ttl_ok =
         when tx.validity_range.upper_bound.bound_type is {

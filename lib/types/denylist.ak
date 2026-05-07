@@ -21,10 +21,7 @@ pub type SpendRedeemer {
 /// so the validator can read the current `admin_credential_hash` from GS datum.
 pub type MintRedeemer {
   Init { root_output_index: Int }
-  Deinit {
-    root_input_index: Int,
-    global_state_ref_input_index: Int,
-  }
+  Deinit { root_input_index: Int, global_state_ref_input_index: Int }
   AddToDenylist {
     user_pkh: ByteArray,
     anchor_node_input_index: Int,

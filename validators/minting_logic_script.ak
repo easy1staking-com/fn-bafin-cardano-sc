@@ -37,7 +37,8 @@ validator minting_logic_validator(
     // an input implies the GS spend validator is running; by the non-Mint-
     // branches-reject-mint invariant in global_state.ak, only the MintSecurity
     // branch permits a security-token mint — and it decrements `mintable_amount`.
-    let gs_input = utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
+    let gs_input =
+      utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
     expect
       quantity_of(
         gs_input.output.value,

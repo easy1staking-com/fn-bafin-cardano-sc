@@ -14,9 +14,7 @@ use types/denylist.{
 use types/global_state.{admin_from_ref_input}
 use utils.{must_be_signed_by_credential}
 
-validator denylist_validator(
-  denylist_linked_list_policy_id: ByteArray,
-) {
+validator denylist_validator(denylist_linked_list_policy_id: ByteArray) {
   spend(
     _datum_opt: Option<Data>,
     redeemer: SpendRedeemer,

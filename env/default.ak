@@ -5,4 +5,4 @@ pub const issuance_cbor_hex_policy_id =
 // Network id byte baked into KYC proof payloads. Prevents cross-network
 // replay. Values by convention:
 //   0x00 preview, 0x01 preprod, 0x02 mainnet, 0x03 yaci
-pub const network_id: Int = 0x00
+pub const network_id: Int = 0x0

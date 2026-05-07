@@ -27,8 +27,7 @@ pub fn covers_key(
   let covers_from_above =
     when covering_link is {
       None -> True
-      Some(next_key) ->
-        builtin.less_than_bytearray(target_pkh, next_key)
+      Some(next_key) -> builtin.less_than_bytearray(target_pkh, next_key)
     }
   covers_from_below && covers_from_above
 }
@@ -82,11 +81,14 @@ pub fn verify_denylist_absence(
 // substantial fixture plumbing and the core absence logic is covered here.
 // End-to-end coverage lands in PR 2 via run-all.ts scenarios.
 
-const pkh_low: ByteArray = #"00000000000000000000000000000000000000000000000000000000"
+const pkh_low: ByteArray =
+  #"00000000000000000000000000000000000000000000000000000000"
 
-const pkh_mid: ByteArray = #"88888888888888888888888888888888888888888888888888888888"
+const pkh_mid: ByteArray =
+  #"88888888888888888888888888888888888888888888888888888888"
 
-const pkh_high: ByteArray = #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+const pkh_high: ByteArray =
+  #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 // Root covers everything: no predecessor, no successor (empty list).
 test covers_empty_list_from_root() {

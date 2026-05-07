@@ -48,10 +48,7 @@ pub type GlobalStateDatum {
 ///
 ///   let gs_input = utils.safe_list_at(self.reference_inputs, redeemer.idx)
 ///   expect !gs.is_paused(gs_input, global_state_policy_id)
-pub fn is_paused(
-  gs_input: Input,
-  global_state_policy_id: ByteArray,
-) -> Bool {
+pub fn is_paused(gs_input: Input, global_state_policy_id: ByteArray) -> Bool {
   expect
     quantity_of(
       gs_input.output.value,
@@ -99,10 +96,7 @@ pub type GlobalStateSpendAction {
     power_user_node_ref_input_index: Int,
   }
   ModifySecurityInfo { new_security_info: Data }
-  AddTrustedEntity {
-    vkey: ByteArray,
-    metadata: TrustedEntityMetadata,
-  }
+  AddTrustedEntity { vkey: ByteArray, metadata: TrustedEntityMetadata }
   RemoveTrustedEntity { vkey: ByteArray }
   UpdateTrustedEntity {
     old_vkey: ByteArray,
@@ -149,11 +143,7 @@ fn test_gs_input(transfers_paused: Bool) -> Input {
         payment_credential: Script(test_gs_policy_id),
         stake_credential: None,
       },
-      value: from_asset(
-        test_gs_policy_id,
-        constants.global_state_asset_name,
-        1,
-      ),
+      value: from_asset(test_gs_policy_id, constants.global_state_asset_name, 1),
       datum: InlineDatum(datum),
       reference_script: None,
     },

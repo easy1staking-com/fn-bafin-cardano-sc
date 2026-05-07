@@ -31,10 +31,7 @@ pub type SpendRedeemer {
 
 pub type MintRedeemer {
   Init { root_output_index: Int }
-  Deinit {
-    root_input_index: Int,
-    global_state_ref_input_index: Int,
-  }
+  Deinit { root_input_index: Int, global_state_ref_input_index: Int }
   AddPowerUser {
     new_power_user_key: ByteArray,
     anchor_node_input_index: Int,
