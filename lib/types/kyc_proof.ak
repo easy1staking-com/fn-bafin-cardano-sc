@@ -1,3 +1,5 @@
+use aiken/merkle_patricia_forestry.{Proof} as mpf
+
 /// A KYC proof is a short-lived Ed25519 signature from a trusted issuer
 /// attesting that a specific user is KYC'd for a specific security token on a
 /// specific network, valid until a specific moment.
@@ -15,10 +17,21 @@
 /// Signature: 64-byte raw Ed25519 over the payload.
 /// Issuer vkey: 32-byte raw Ed25519 vkey — directly indexes
 ///   `GlobalStateDatum.trusted_entity_vkeys`.
-pub type KycProof {
+pub type AttestationProof {
   payload: ByteArray,
   signature: ByteArray,
   issuer_vkey: ByteArray,
+}
+
+pub type MembershipProof {
+  pkh: ByteArray,
+  valid_until_ms: Int,
+  mpf_proof: Proof,
+}
+
+pub type KycProof {
+  Attestation { kyc_proof: AttestationProof }
+  Membership { membership_proof: MembershipProof }
 }
 
 pub const payload_length: Int = 66
