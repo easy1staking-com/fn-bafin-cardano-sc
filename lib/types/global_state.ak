@@ -32,6 +32,8 @@ pub type GlobalStateDatum {
   //Trusted Entity List — sorted ascending by vkey. Key = 32-byte Ed25519 vkey
   //used to verify KYC proofs. Value = free-form metadata (operator-defined).
   trusted_entity_vkeys: Pairs<ByteArray, TrustedEntityMetadata>,
+  /// Root hash of the MPF membership tree (32 bytes); empty = no members yet
+  member_root_hash: ByteArray,
 }
 
 /// Asserts the given input is an authentic GS UTxO (carries exactly 1 GS NFT)
@@ -132,6 +134,7 @@ fn test_gs_input(transfers_paused: Bool) -> Input {
       denylist_linked_list_policy_id: #"",
       security_info: builtin.constr_data(0, []),
       trusted_entity_vkeys: [],
+      member_root_hash: #"",
     }
   Input {
     output_reference: OutputReference {

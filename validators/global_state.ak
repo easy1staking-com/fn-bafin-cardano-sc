@@ -192,6 +192,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           //Remaining amount must NOT be negative
@@ -234,6 +235,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           no_concurrent_security_mint,
@@ -256,6 +258,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: new_security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           no_concurrent_security_mint,
@@ -288,6 +291,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           no_concurrent_security_mint,
@@ -313,6 +317,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           no_concurrent_security_mint,
@@ -357,6 +362,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           no_concurrent_security_mint,
@@ -380,6 +386,7 @@ validator global_state_spend_validator(
             denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
+            member_root_hash: input_datum.member_root_hash,
           }
         and {
           no_concurrent_security_mint,
