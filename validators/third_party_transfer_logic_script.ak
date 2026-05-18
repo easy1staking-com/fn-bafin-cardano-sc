@@ -1,19 +1,36 @@
 use aiken/collection/list
-use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
+use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/certificate.{Certificate, RegisterCredential}
+use cardano/transaction.{InlineDatum, Transaction}
+use constants
+use denylist/absence.{verify_denylist_absence}
+use env
+use kyc/verify.{verify_kyc_proof}
+use types/global_state.{GlobalStateDatum}
 use types/power_users.{PowerUser}
 use types/third_party_transfer_logic_script.{
   ThirdPartyTransferLogicScriptWithdrawRedeemer,
 }
-use types/users.{User}
 use utils.{must_be_signed_by_credential}
 
+/// Third-party (force) transfer logic for emergency regulatory flows.
+///
+/// Per-destination check (for each unique destination stake credential):
+///   1. A valid KYC proof for the destination (attested by a TEL entity).
+///   2. The destination is NOT in the denylist.
+///
+/// NO source checks — force transfer is an admin override: the source may be
+/// denylisted or have expired KYC. That is the point.
+///
+/// Plus:
+///   - Transfers-paused gate (same as regular transfers — H-3 fix).
+///   - `can_force_transfer` power user signs.
 validator third_party_transfer_logic_validator(
   security_asset_name: ByteArray,
   power_users_linked_list_policy_id: ByteArray,
-  users_linked_list_policy_id: ByteArray,
+  global_state_policy_id: ByteArray,
   issuance_policy_id: PolicyId,
 ) {
   withdraw(
@@ -21,101 +38,109 @@ validator third_party_transfer_logic_validator(
     _credential: Credential,
     self: Transaction,
   ) {
-    //Any input can be spent
-    //Any output with this token must go to a verified and non-blacklisted address
-    //programmable_logic_base already check the correct destination payment credentials
-    let outputs_with_token =
-      list.filter(
-        self.outputs,
-        fn(output) {
-          quantity_of(output.value, issuance_policy_id, security_asset_name) > 0
-        },
+    // Pause + GS-datum decode.
+    let gs_input =
+      utils.safe_list_at(
+        self.reference_inputs,
+        redeemer.global_state_ref_input_index,
+      )
+    let transfers_paused =
+      global_state.is_paused(gs_input, global_state_policy_id)
+    expect InlineDatum(gs_datum_raw) = gs_input.output.datum
+    expect gs_datum: GlobalStateDatum = gs_datum_raw
+
+    // Unique destination stake-cred hashes from outputs carrying the token.
+    let outputs_user_stake_cred_hash =
+      list.unique(
+        list.foldr(
+          self.outputs,
+          [],
+          fn(output, result) {
+            if quantity_of(
+              output.value,
+              issuance_policy_id,
+              security_asset_name,
+            ) > 0 {
+              expect Some(Inline(stake_cred)) = output.address.stake_credential
+              let credential_hash =
+                when stake_cred is {
+                  VerificationKey(hash) -> hash
+                  Script(hash) -> hash
+                }
+              list.push(result, credential_hash)
+            } else {
+              result
+            }
+          },
+        ),
       )
 
-    let all_token_outputs_are_correct =
+    // Per-destination: KYC proof + denylist absence.
+    let all_destinations_ok =
       list.indexed_foldr(
-        outputs_with_token,
+        outputs_user_stake_cred_hash,
         True,
-        fn(index, output, result) {
-          //As all outputs must return True, if any of previous input returned False, then fail
-          //The last output is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
-
-          expect Some(Inline(stake_cred)) = output.address.stake_credential
-          let output_stake_credential_hash =
-            when stake_cred is {
-              VerificationKey(hash) -> hash
-              Script(hash) -> hash
-            }
-
-          let destination_user_node_ref_input =
-            utils.safe_list_at(
-              self.reference_inputs,
-              utils.safe_list_at(
-                redeemer.destination_user_node_ref_input_indexes,
-                index,
-              ),
+        fn(index, dest_pkh, acc) {
+          expect acc
+          let action = utils.safe_list_at(redeemer.destination_actions, index)
+          let kyc_ok =
+            verify_kyc_proof(
+              action.destination_proof,
+              dest_pkh,
+              gs_datum,
+              issuance_policy_id,
+              env.network_id,
+              self,
             )
-
-          let destination_user_anchor_node_ref_input =
-            utils.safe_list_at(
+          let denylist_ok =
+            verify_denylist_absence(
+              dest_pkh,
+              action.destination_denylist_covering_ref_input_index,
               self.reference_inputs,
-              utils.safe_list_at(
-                redeemer.destination_user_anchor_node_ref_input_indexes,
-                index,
-              ),
+              gs_datum.denylist_linked_list_policy_id,
             )
-
-          expect InlineDatum(destination_user_datum) =
-            destination_user_node_ref_input.output.datum
-          expect parsed_destination_user_datum: NodeDatum =
-            destination_user_datum
-          expect destination_user_data: User =
-            parsed_destination_user_datum.data
-
           and {
-            //The node must belong to the users registry
-            ordered.prove_is_member(
-              users_linked_list_policy_id,
-              parsed_destination_user_datum.key,
-              destination_user_anchor_node_ref_input.output,
-            ),
-            //The key of the destination user must match the output credential hash
-            parsed_destination_user_datum.key == Key(
-              output_stake_credential_hash,
-            ),
-            destination_user_data.is_verified,
-            destination_user_data.is_blacklisted == False,
+            kyc_ok,
+            denylist_ok,
           }
         },
       )
 
-    //Power user must have the can_force_transfer right
+    // Admin-authorised power user with can_force_transfer.
     let power_user_ref_input =
       utils.safe_list_at(
         self.reference_inputs,
         redeemer.power_user_node_ref_input_index,
       )
-    expect InlineDatum(power_user_user_datum) =
-      power_user_ref_input.output.datum
-    expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
-    expect power_user_data: PowerUser = parsed_power_user_user_datum.data
-    expect Key { key: power_user_node_key } = parsed_power_user_user_datum.key
-    let power_user_anchor_node_ref_input =
-      utils.safe_list_at(
-        self.reference_inputs,
-        redeemer.power_user_anchor_node_ref_input_index,
+    let (power_user_node_key, power_user_data) =
+      get_element_info(
+        power_user_ref_input.output,
+        fn(_lovelace, node_key, data, _link) {
+          expect Some(key) = node_key
+          expect power_user_data: PowerUser = data
+          (key, power_user_data)
+        },
       )
+        |> run_element_with(
+            power_users_linked_list_policy_id,
+            constants.linked_list_root_key,
+            constants.linked_list_node_key_prefix,
+            constants.linked_list_node_key_prefix_length,
+          )
+
     and {
-      all_token_outputs_are_correct,
-      //The node must belong to the power users registry
-      ordered.prove_is_member(
-        power_users_linked_list_policy_id,
-        parsed_power_user_user_datum.key,
-        power_user_anchor_node_ref_input.output,
-      ),
+      transfers_paused == False,
+      all_destinations_ok,
       power_user_data.can_force_transfer,
       must_be_signed_by_credential(self, power_user_node_key),
+    }
+  }
+
+  // Whitelist RegisterCredential only — see minting_logic_script for rationale.
+  publish(_r: Data, c: Certificate, _s: Transaction) {
+    when c is {
+      RegisterCredential { .. } -> True
+      _ -> False
     }
   }
 

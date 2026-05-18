@@ -1,18 +1,30 @@
-use aiken/builtin
 use aiken/collection/list
-use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
-use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
+use cardano/address.{Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use constants
+use cardano/certificate.{Certificate, RegisterCredential}
+use cardano/transaction.{InlineDatum, Transaction}
+use denylist/absence.{verify_denylist_absence}
+use env
+use kyc/verify.{verify_kyc_proof}
+use types/global_state.{GlobalStateDatum}
 use types/transfer_logic_script.{TransferLogicScriptWithdrawRedeemer}
-use types/users.{User}
 use utils
 
+/// Transfer logic for a BAFIN security token (Track 4, TEL+denylist model).
+///
+/// Per-input check (for each unique sender stake credential):
+///   1. The redeemer's matching KYC proof validates against GS.trusted_entity_vkeys
+///      (signature + payload fields + TTL + tier + network + security binding).
+///   2. The sender is NOT in the denylist (covering-node absence proof).
+///
+/// Per-output check (for each unique destination stake credential):
+///   3. The destination is NOT in the denylist. No KYC required — receiving
+///      is gated only by denylist absence.
+///
+/// Plus the pause gate (GS must not be paused).
 validator transfer_logic_validator(
   security_asset_name: ByteArray,
   global_state_policy_id: ByteArray,
-  users_linked_list_policy_id: ByteArray,
   issuance_policy_id: PolicyId,
 ) {
   withdraw(
@@ -20,28 +32,21 @@ validator transfer_logic_validator(
     _credential: Credential,
     self: Transaction,
   ) {
-    let global_state_ref_input =
+    // 1. Resolve GS reference input and fast-check pause flag.
+    let gs_input =
       utils.safe_list_at(
         self.reference_inputs,
         redeemer.global_state_ref_input_index,
       )
-    expect InlineDatum(global_state_datum) = global_state_ref_input.output.datum
-    //Efficient retrieval of the transfers_paused field
     let transfers_paused =
-      builtin.unconstr_index(builtin.unconstr_fields(global_state_datum)) == 1
+      global_state.is_paused(gs_input, global_state_policy_id)
 
-    let global_state_ok = and {
-        //Global State must have the correct NFT
-        quantity_of(
-          global_state_ref_input.output.value,
-          global_state_policy_id,
-          constants.global_state_asset_name,
-        ) > 0,
-        //General transfers of this token must NOT be paused
-        transfers_paused == False,
-      }
+    // 2. Full-parse GS datum so we can read the TEL and denylist policy id.
+    expect InlineDatum(gs_datum_raw) = gs_input.output.datum
+    expect gs_datum: GlobalStateDatum = gs_datum_raw
 
-    //Collect unique input stake_cred that must be verified
+    // 3. Aggregate unique sender stake-cred hashes from inputs carrying the
+    //    security token.
     let inputs_user_stake_cred_hash =
       list.unique(
         list.foldr(
@@ -68,57 +73,114 @@ validator transfer_logic_validator(
         ),
       )
 
-    //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal 
-    //to the number of inputs (additional actions can be simply ignored)
-    let all_token_inputs_can_be_spent =
+    // 4. Aggregate unique destination stake-cred hashes from outputs carrying
+    //    the security token.
+    let outputs_user_stake_cred_hash =
+      list.unique(
+        list.foldr(
+          self.outputs,
+          [],
+          fn(output, result) {
+            if quantity_of(
+              output.value,
+              issuance_policy_id,
+              security_asset_name,
+            ) > 0 {
+              expect Some(Inline(stake_cred)) = output.address.stake_credential
+              let credential_hash =
+                when stake_cred is {
+                  VerificationKey(hash) -> hash
+                  Script(hash) -> hash
+                }
+              list.push(result, credential_hash)
+            } else {
+              result
+            }
+          },
+        ),
+      )
+
+    // 5. Per-sender: valid KYC proof + denylist absence.
+    let all_senders_ok =
       list.indexed_foldr(
         inputs_user_stake_cred_hash,
         True,
-        fn(index, input_stake_cred_hash, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
-
+        fn(index, sender_pkh, acc) {
+          expect acc
           let action =
             utils.safe_list_at(redeemer.actions_for_each_input, index)
-
-          let user_node_ref_input =
-            utils.safe_list_at(
-              self.reference_inputs,
-              action.user_node_ref_input_index,
+          let kyc_ok =
+            verify_kyc_proof(
+              action.source_proof,
+              sender_pkh,
+              gs_datum,
+              issuance_policy_id,
+              env.network_id,
+              self,
             )
-          expect InlineDatum(user_node_datum) = user_node_ref_input.output.datum
-          expect parsed_user_node_datum: NodeDatum = user_node_datum
-          expect user_state: User = parsed_user_node_datum.data
-          let prev_user_node_ref_input =
-            utils.safe_list_at(
+          let denylist_ok =
+            verify_denylist_absence(
+              sender_pkh,
+              action.source_denylist_covering_ref_input_index,
               self.reference_inputs,
-              action.user_anchor_node_ref_input_index,
+              gs_datum.denylist_linked_list_policy_id,
             )
-
           and {
-            //The node must belong to the user state list
-            ordered.prove_is_member(
-              users_linked_list_policy_id,
-              parsed_user_node_datum.key,
-              prev_user_node_ref_input.output,
-            ),
-            //Node must have the user credential hash
-            parsed_user_node_datum.key == Key { key: input_stake_cred_hash },
-            //Tx must be signed by the user owning this utxo
-            //Already done by CIP113 programmable_logic_global
-            //User has been verified
-            user_state.is_verified == True,
-            //User is not blacklisted
-            user_state.is_blacklisted == False,
+            kyc_ok,
+            denylist_ok,
+          }
+        },
+      )
+
+    // 6. Per-destination: valid KYC proof + denylist absence. Swiss CO
+    //    Art. 973e / eWpG §14 / ERC-3643 norm all demand that the recipient
+    //    be KYC'd at transfer time (a named creditor / registered holder).
+    let all_destinations_ok =
+      list.indexed_foldr(
+        outputs_user_stake_cred_hash,
+        True,
+        fn(index, dest_pkh, acc) {
+          expect acc
+          let action = utils.safe_list_at(redeemer.destination_actions, index)
+          let kyc_ok =
+            verify_kyc_proof(
+              action.destination_proof,
+              dest_pkh,
+              gs_datum,
+              issuance_policy_id,
+              env.network_id,
+              self,
+            )
+          let denylist_ok =
+            verify_denylist_absence(
+              dest_pkh,
+              action.destination_denylist_covering_ref_input_index,
+              self.reference_inputs,
+              gs_datum.denylist_linked_list_policy_id,
+            )
+          and {
+            kyc_ok,
+            denylist_ok,
           }
         },
       )
 
     and {
-      //Outputs are already checked by programmable_logic_base
-      all_token_inputs_can_be_spent,
-      global_state_ok,
+      //General transfers of this token must NOT be paused
+      transfers_paused == False,
+      all_senders_ok,
+      all_destinations_ok,
+    }
+  }
+
+  // Whitelist RegisterCredential only — see minting_logic_script for rationale.
+  // A rubber-stamp publish would let anyone de-register this script's stake
+  // credential via UnregisterCredential, bricking every transfer until
+  // re-registered (and paying the attacker the 2 ADA deposit refund).
+  publish(_r: Data, c: Certificate, _s: Transaction) {
+    when c is {
+      RegisterCredential { .. } -> True
+      _ -> False
     }
   }
 

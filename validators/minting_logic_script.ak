@@ -1,90 +1,130 @@
-use aiken/builtin
-use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
-use cardano/address.{Credential}
-use cardano/assets.{quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use aiken/collection/list
+use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
+use cardano/address.{Credential, Script}
+use cardano/assets.{PolicyId, quantity_of}
+use cardano/certificate.{Certificate, RegisterCredential}
+use cardano/transaction.{Transaction}
 use constants
+use env
+use types/issuance.{
+  IssuanceCborHex, apply_hashed_parameter, issuance_cbor_hex_token_name,
+}
 use types/minting_logic_script.{MintingLogicScriptWithdrawRedeemer}
 use types/power_users.{PowerUser}
-use utils.{must_be_signed_by_credential}
+use utils.{expect_inline_datum, must_be_signed_by_credential}
 
 validator minting_logic_validator(
   security_asset_name: ByteArray,
-  config_policy_id: ByteArray,
   global_state_policy_id: ByteArray,
   power_users_linked_list_policy_id: ByteArray,
 ) {
   withdraw(
     redeemer: MintingLogicScriptWithdrawRedeemer,
-    _credential: Credential,
+    credential: Credential,
     self: Transaction,
   ) {
-    let config =
-      utils.get_config_as_data_list(
-        utils.safe_list_at(
-          self.reference_inputs,
-          redeemer.config_ref_input_index,
-        ),
-        config_policy_id,
-        constants.config_asset_name,
-      )
-
-    // you should be able to calculate policy id reproducing the same steps that the registry mint does.
-    // The reason why I think this should work: https://github.com/cardano-foundation/cip113-programmable-tokens/blob/main/src/programmable-tokens-onchain-aiken/validators/registry_mint.ak#L72-L79
-    // is that if an attacker is spoofing the issuance utxo, it won't be anyway a registered programmable token (ie. there won't be an entry in the registry),
-    // BUT if the correct issuance is used, because of invoking the proper issuance contract, the token will actually be a programmable token
-    // which can be registered accordingly
-    let issuance_policy_id = builtin.un_b_data(utils.safe_list_at(config, 0))
-
-    let global_state_input =
-      utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
+    expect Script(hashed_params) = credential
+    let issuance_policy_id =
+      derive_token_policy(self, env.issuance_cbor_hex_policy_id, hashed_params)
 
     let minted_amount =
       quantity_of(self.mint, issuance_policy_id, security_asset_name)
+
+    // GS is always spent during a mint under the Track 4 design (GS minted at
+    // initCompliance; register spends-and-updates it via the MintSecurity
+    // branch, which enforces the supply cap). This validator only needs to
+    // assert the GS NFT is actually on the referenced input — NFT presence on
+    // an input implies the GS spend validator is running; by the non-Mint-
+    // branches-reject-mint invariant in global_state.ak, only the MintSecurity
+    // branch permits a security-token mint — and it decrements `mintable_amount`.
+    let gs_input =
+      utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
+    expect
+      quantity_of(
+        gs_input.output.value,
+        global_state_policy_id,
+        constants.global_state_asset_name,
+      ) == 1
 
     let power_user_ref_input =
       utils.safe_list_at(
         self.reference_inputs,
         redeemer.power_user_node_ref_input_index,
       )
-    expect InlineDatum(power_user_user_datum) =
-      power_user_ref_input.output.datum
-    expect parsed_power_user_user_datum: NodeDatum = power_user_user_datum
-    expect power_user_data: PowerUser = parsed_power_user_user_datum.data
-    expect Key { key: power_user_node_key } = parsed_power_user_user_datum.key
-    let power_user_anchor_node_ref_input =
-      utils.safe_list_at(
-        self.reference_inputs,
-        redeemer.power_user_anchor_node_ref_input_index,
+
+    let (power_user_node_key, power_user_data) =
+      get_element_info(
+        power_user_ref_input.output,
+        fn(_lovelace, node_key, data, _link) {
+          expect Some(key) = node_key
+          expect power_user_data: PowerUser = data
+          (key, power_user_data)
+        },
       )
+        |> run_element_with(
+            power_users_linked_list_policy_id,
+            constants.linked_list_root_key,
+            constants.linked_list_node_key_prefix,
+            constants.linked_list_node_key_prefix_length,
+          )
+
     and {
       //Redeemer contains the amount just for easy reference for eventual other contracts
-      minted_amount == redeemer.minted_amount,
-      //The node must belong to the power users registry
-      ordered.prove_is_member(
-        power_users_linked_list_policy_id,
-        parsed_power_user_user_datum.key,
-        power_user_anchor_node_ref_input.output,
-      ),
-      //global_state.spend must be called, so we check that the unique nft is spent
-      quantity_of(
-        global_state_input.output.value,
-        global_state_policy_id,
-        constants.global_state_asset_name,
-      ) > 0,
+      (minted_amount == redeemer.minted_amount)?,
       //A power user must have signed the transaction
-      must_be_signed_by_credential(self, power_user_node_key),
+      must_be_signed_by_credential(self, power_user_node_key)?,
       //If minted_amount > 0, power user must be minter
       //If minted_amount < 0, power user must be burner
       if minted_amount > 0 {
         power_user_data.can_mint
       } else {
         power_user_data.can_burn
-      },
+      }?,
+    }
+  }
+
+  // Whitelist RegisterCredential only. Rejecting UnregisterCredential prevents
+  // a ~2 ADA griefing DoS: a rubber-stamp publish would allow anyone to
+  // de-register this script's stake credential, which would brick every
+  // withdraw-zero mint/burn until re-registered. Also rejects delegation and
+  // DRep/committee cert types — this credential exists solely for withdraw-0.
+  // Tradeoff: the stake credential becomes permanent (2 ADA locked forever).
+  publish(_r: Data, c: Certificate, _s: Transaction) {
+    when c is {
+      RegisterCredential { .. } -> True
+      _ -> False
     }
   }
 
   else(_) {
     fail
   }
+}
+
+fn derive_token_policy(
+  self: Transaction,
+  issuance_cbor_hex_cs: PolicyId,
+  hashed_param: ByteArray,
+) -> PolicyId {
+  expect Some(issuance_ref_input) =
+    list.find(
+      self.reference_inputs,
+      fn(input) {
+        assets.has_nft_strict(
+          input.output.value,
+          issuance_cbor_hex_cs,
+          issuance_cbor_hex_token_name,
+        )
+      },
+    )
+
+  // Extract the IssuanceCborHex datum
+  let issuance_datum = expect_inline_datum(issuance_ref_input.output)
+  expect issuance_cbor: IssuanceCborHex = issuance_datum
+
+  apply_hashed_parameter(
+    issuance_cbor.prefix_cbor_hex,
+    issuance_cbor.postfix_cbor_hex,
+    hashed_param,
+  )
 }

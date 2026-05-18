@@ -1,4 +1,4 @@
-use aiken/builtin
+use aiken/builtin.{head_list, tail_list}
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/collection/pairs
@@ -21,11 +21,17 @@ pub fn safe_list_at(self: List<a>, index: Int) -> a {
   do_list_at(self, index)
 }
 
-fn do_list_at(self: List<a>, index: Int) -> a {
-  if index == 0 {
-    builtin.head_list(self)
+fn do_list_at(elems: List<a>, at: Int) -> a {
+  if at >= 2 {
+    do_list_at(tail_list(tail_list(elems)), at - 2)
   } else {
-    do_list_at(builtin.tail_list(self), index - 1)
+    head_list(
+      if at == 1 {
+        tail_list(elems)
+      } else {
+        elems
+      },
+    )
   }
 }
 
@@ -47,4 +53,9 @@ pub fn get_config_as_data_list(
     ) > 0
   expect InlineDatum(output_datum) = config_ref_input.output.datum
   builtin.unconstr_fields(output_datum)
+}
+
+pub fn expect_inline_datum(output: Output) -> Data {
+  expect InlineDatum(d) = output.datum
+  d
 }
