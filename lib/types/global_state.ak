@@ -34,6 +34,9 @@ pub type GlobalStateDatum {
   trusted_entity_vkeys: Pairs<ByteArray, TrustedEntityMetadata>,
   /// Root hash of the MPF membership tree (32 bytes); empty = no members yet
   member_root_hash: ByteArray,
+  // Whether KYC is required for receiving transfers. 
+  // If false, only the sender's KYC needs to be verified for a transfer; if true, both sender and receiver KYC are
+  receiver_kyc_enabled: Bool,
 }
 
 /// Asserts the given input is an authentic GS UTxO (carries exactly 1 GS NFT)
@@ -105,6 +108,7 @@ pub type GlobalStateSpendAction {
     new_vkey: ByteArray,
     new_metadata: TrustedEntityMetadata,
   }
+  SetReceiverKycEnabled { enabled: Bool }
   RotateAdmin { new_admin_credential_hash: ByteArray }
 }
 
@@ -135,6 +139,7 @@ fn test_gs_input(transfers_paused: Bool) -> Input {
       security_info: builtin.constr_data(0, []),
       trusted_entity_vkeys: [],
       member_root_hash: #"",
+      receiver_kyc_enabled: False,
     }
   Input {
     output_reference: OutputReference {

@@ -143,14 +143,18 @@ validator transfer_logic_validator(
           expect acc
           let action = utils.safe_list_at(redeemer.destination_actions, index)
           let kyc_ok =
-            verify_kyc_proof(
-              action.destination_proof,
-              dest_pkh,
-              gs_datum,
-              issuance_policy_id,
-              env.network_id,
-              self,
-            )
+            if gs_datum.receiver_kyc_enabled {
+              verify_kyc_proof(
+                action.destination_proof,
+                dest_pkh,
+                gs_datum,
+                issuance_policy_id,
+                env.network_id,
+                self,
+              )
+            } else {
+              True
+            }
           let denylist_ok =
             verify_denylist_absence(
               dest_pkh,

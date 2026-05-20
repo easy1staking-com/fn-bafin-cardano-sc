@@ -12,7 +12,7 @@ use constants
 use types/global_state.{
   AddTrustedEntity, GlobalStateDatum, GlobalStateSpendRedeemer, MintSecurity,
   ModifySecurityInfo, PauseTransfers, RemoveTrustedEntity, RotateAdmin,
-  TrustedEntityMetadata, UpdateTrustedEntity,
+  SetReceiverKycEnabled, TrustedEntityMetadata, UpdateTrustedEntity,
 }
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential, quantity_of_policy_id}
@@ -193,6 +193,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           //Remaining amount must NOT be negative
@@ -236,6 +237,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           no_concurrent_security_mint,
@@ -259,6 +261,7 @@ validator global_state_spend_validator(
             security_info: new_security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           no_concurrent_security_mint,
@@ -292,6 +295,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           no_concurrent_security_mint,
@@ -318,6 +322,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           no_concurrent_security_mint,
@@ -363,6 +368,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           no_concurrent_security_mint,
@@ -370,6 +376,28 @@ validator global_state_spend_validator(
           bytearray.length(new_vkey) == 32,
           old_exists,
           new_clash_ok,
+          address_preserved,
+          nft_preserved,
+          value_preserved,
+          parsed_global_state_output_datum == expected_datum,
+        }
+      }
+      SetReceiverKycEnabled { enabled } -> {
+        let expected_datum =
+          GlobalStateDatum {
+            transfers_paused: input_datum.transfers_paused,
+            mintable_amount: input_datum.mintable_amount,
+            admin_credential_hash: input_datum.admin_credential_hash,
+            power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
+            denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
+            security_info: input_datum.security_info,
+            trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
+            member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: enabled,
+          }
+        and {
+          no_concurrent_security_mint,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           address_preserved,
           nft_preserved,
           value_preserved,
@@ -387,6 +415,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
+            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
           }
         and {
           no_concurrent_security_mint,
