@@ -3,8 +3,7 @@ use aiken/collection/list
 use aiken/collection/pairs
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
-use cardano/address.{Script}
-use cardano/assets.{PolicyId, Value, quantity_of, without_lovelace}
+use cardano/assets.{PolicyId, Value, quantity_of}
 use cardano/transaction.{
   InlineDatum, Mint, Output, OutputReference, Transaction, find_input,
 }
@@ -68,31 +67,38 @@ fn sanitise_initial_datum(datum: GlobalStateDatum, self_mint: Value) -> Bool {
 // ============================================================================
 // Mint validator
 // ============================================================================
-
+// Only used at genesis to mint the global_state NFT with the initial datum. 
+// Verifies the following:
+// - The one-and-only global_state NFT is being minted, and goes to the output.
+// - The initial datum is well-formed (basic field checks + trusted entity vkey list is sorted and has no duplicates + power user ll and denylist ll roots are minted).
+// Note: No Check of the receiver address is performed here; the NFT can be sent to any address. 
+//       It MUST be sent to the address of the global_state spend validator address, which we don't know on initialization due to circular dependency.
+//       The global_state spend validator will ensure that the NFT never leaves the script address after this initial minting step.
 validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
   mint(_redeemer: Data, policy_id: PolicyId, self: Transaction) {
-    let contract_credential = Script(policy_id)
-
     let one_time_utxo = OutputReference(tx0, index0)
     //we won't use input_present, we just need it to be there, otherwise error
     expect Some(_input_present) = find_input(self.inputs, one_time_utxo)
-    let output_parameters = utils.safe_list_at(self.outputs, 0)
+
+    expect Some(output_parameters) =
+      list.find(
+        self.outputs,
+        fn(output) {
+          quantity_of(
+            output.value,
+            policy_id,
+            constants.global_state_asset_name,
+          ) == 1
+        },
+      )
     expect InlineDatum(output_datum_raw) = output_parameters.datum
     expect output_datum: GlobalStateDatum = output_datum_raw
 
     and {
-      //First output goes to this address
-      output_parameters.address.payment_credential == contract_credential,
-      //Only 1 token of same policy
+      // No other asset names under this policy are minted alongside the NFT.
       quantity_of_policy_id(self.mint, policy_id) == 1,
-      //I am minting only 1 token (NFT)
+      // Exactly one global_state NFT is minted.
       quantity_of(self.mint, policy_id, constants.global_state_asset_name) == 1,
-      //NFT goes to the output
-      quantity_of(
-        output_parameters.value,
-        policy_id,
-        constants.global_state_asset_name,
-      ) == 1,
       //Initial datum is well-formed (sort, no duplicates, correct field widths,
       //LL root NFTs also minted in this tx).
       sanitise_initial_datum(output_datum, self.mint),
@@ -107,7 +113,7 @@ validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
 // ============================================================================
 // Spend validator
 // ============================================================================
-//
+// NOTE: All values in the utxo must be preserved by this validator.
 // INVARIANT: the global_state NFT must never leave this script address.
 // Every branch below preserves `global_state_output.address.payment_credential
 // == own_input.output.address.payment_credential`. If you add a new branch, you
@@ -125,7 +131,7 @@ validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
 // `RotateAdmin` action requires dual signature (old + new).
 validator global_state_spend_validator(
   security_asset_name: ByteArray,
-  config_policy_id: ByteArray,
+  issuance_policy_id: ByteArray,
   global_state_policy_id: ByteArray,
 ) {
   spend(
@@ -135,22 +141,7 @@ validator global_state_spend_validator(
     self: Transaction,
   ) {
     expect Some(input_datum) = datum_opt
-    expect Some(own_input) =
-      list.find(
-        self.inputs,
-        fn(input) { input.output_reference == input_out_ref },
-      )
-
-    let config =
-      utils.get_config_as_data_list(
-        utils.safe_list_at(
-          self.reference_inputs,
-          redeemer.config_ref_input_index,
-        ),
-        config_policy_id,
-        constants.config_asset_name,
-      )
-    let issuance_policy_id = builtin.un_b_data(utils.safe_list_at(config, 0))
+    expect Some(own_input) = find_input(self.inputs, input_out_ref)
 
     let global_state_output =
       utils.safe_list_at(self.outputs, redeemer.global_state_output_index)
@@ -160,13 +151,15 @@ validator global_state_spend_validator(
 
     // All branches share these address/NFT preservation invariants.
     let address_preserved =
-      global_state_output.address.payment_credential == own_input.output.address.payment_credential
+      global_state_output.address == own_input.output.address
+    // ensuring the nft is preserved is what enforces that the same global state UTxO is carried forward after the spend.
     let nft_preserved =
       quantity_of(
         global_state_output.value,
         global_state_policy_id,
         constants.global_state_asset_name,
       ) == 1
+    // ensuring the ADA amount in the Utxo is preserverd
     let value_preserved = own_input.output.value == global_state_output.value
 
     // Non-MintSecurity branches reject concurrent security mint (preserves
@@ -199,9 +192,9 @@ validator global_state_spend_validator(
           //Remaining amount must NOT be negative
           remaining_amount >= 0,
           address_preserved,
-          parsed_global_state_output_datum == expected_datum,
           nft_preserved,
           value_preserved,
+          parsed_global_state_output_datum == expected_datum,
         }
       }
       PauseTransfers { transfers_paused, power_user_node_ref_input_index } -> {
@@ -241,13 +234,14 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
-          //Must be signed by the power user
-          must_be_signed_by_credential(self, power_user_credential_hash),
+          address_preserved,
+          nft_preserved,
+          value_preserved,
           //Must have permission to pause/unpause transfers
           power_user_data.can_pause,
-          address_preserved,
+          //Must be signed by the power user
+          must_be_signed_by_credential(self, power_user_credential_hash),
           parsed_global_state_output_datum == expected_datum,
-          value_preserved,
         }
       }
       ModifySecurityInfo { new_security_info } -> {
@@ -265,13 +259,11 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
+          address_preserved,
+          nft_preserved,
+          value_preserved,
           //Must be signed by the current admin (from input datum)
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          address_preserved,
-          //No Value change (modulo ADA — admin can top-up or withdraw)
-          without_lovelace(own_input.output.value) == without_lovelace(
-            global_state_output.value,
-          ),
           parsed_global_state_output_datum == expected_datum,
         }
       }
@@ -299,12 +291,12 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
-          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          bytearray.length(vkey) == 32,
-          !has_key,
           address_preserved,
           nft_preserved,
           value_preserved,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
+          bytearray.length(vkey) == 32,
+          !has_key,
           parsed_global_state_output_datum == expected_datum,
         }
       }
@@ -326,11 +318,11 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
-          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          has_key,
           address_preserved,
           nft_preserved,
           value_preserved,
+          has_key,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           parsed_global_state_output_datum == expected_datum,
         }
       }
@@ -372,13 +364,13 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
-          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          bytearray.length(new_vkey) == 32,
-          old_exists,
-          new_clash_ok,
           address_preserved,
           nft_preserved,
           value_preserved,
+          old_exists,
+          new_clash_ok,
+          bytearray.length(new_vkey) == 32,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           parsed_global_state_output_datum == expected_datum,
         }
       }
@@ -397,10 +389,10 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
-          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           address_preserved,
           nft_preserved,
           value_preserved,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           parsed_global_state_output_datum == expected_datum,
         }
       }
@@ -419,15 +411,15 @@ validator global_state_spend_validator(
           }
         and {
           no_concurrent_security_mint,
+          address_preserved,
+          nft_preserved,
+          value_preserved,
+          bytearray.length(new_admin_credential_hash) == 28,
           //Dual-sig: both old (from input datum) and new admins must sign.
           //Prevents silent takeover; prevents lost-key soft-brick by
           //forcing continuity.
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           must_be_signed_by_credential(self, new_admin_credential_hash),
-          bytearray.length(new_admin_credential_hash) == 28,
-          address_preserved,
-          nft_preserved,
-          value_preserved,
           parsed_global_state_output_datum == expected_datum,
         }
       }
