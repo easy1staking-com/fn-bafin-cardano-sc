@@ -64,26 +64,20 @@ pub fn derive_issuance_policy_id_from_registry_node(
   ref_inputs: List<Input>,
   registry_policy_id: ByteArray,
   credential: Credential,
-  // The index of the registry node field which is taken into account for check
+  // The index of the registry node field which is taken into account for checking the correctnes of the registry node
+  // and extracting the hashed params which are used to derive the issuance policy id
   registry_node_field_index: Int,
 ) -> PolicyId {
   expect Script(hashed_params) = credential
 
   // Finding the registry node utxo among the reference inputs.
   // Assuming there aren't many reference inputs, a linear search should be fine.
-  expect Some(registry_ref_input) =
-    list.find(
+  let registry_ref_input =
+    list.expect_find(
       ref_inputs,
       fn(input) {
         assets.has_any_nft_strict(input.output.value, registry_policy_id)
       },
-    )
-  // rename in the redeemer type
-  // ensuring it actually has the registry NFT is the critical check 
-  expect
-    assets.has_any_nft_strict(
-      registry_ref_input.output.value,
-      registry_policy_id,
     )
   let registry_raw: Data = expect_inline_datum(registry_ref_input.output)
   let registry_fields: List<Data> = builtin.unconstr_fields(registry_raw)

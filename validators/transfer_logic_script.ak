@@ -1,8 +1,9 @@
 use aiken/collection/list
 use cardano/address.{Credential, Inline, Script, VerificationKey}
-use cardano/assets.{PolicyId, quantity_of}
+use cardano/assets.{quantity_of}
 use cardano/certificate.{Certificate, RegisterCredential}
 use cardano/transaction.{InlineDatum, Transaction}
+use constants
 use denylist/absence.{verify_denylist_absence}
 use env
 use kyc/verify.{verify_kyc_proof}
@@ -25,13 +26,21 @@ use utils
 validator transfer_logic_validator(
   security_asset_name: ByteArray,
   global_state_policy_id: ByteArray,
-  issuance_policy_id: PolicyId,
+  registry_policy_id: ByteArray,
 ) {
   withdraw(
     redeemer: TransferLogicScriptWithdrawRedeemer,
-    _credential: Credential,
+    credential: Credential,
     self: Transaction,
   ) {
+    let issuance_policy_id =
+      utils.derive_issuance_policy_id_from_registry_node(
+        self.reference_inputs,
+        registry_policy_id,
+        credential,
+        constants.transfer_logic_script_registry_node_index,
+      )
+
     // 1. Resolve GS reference input and fast-check pause flag.
     let gs_input =
       utils.safe_list_at(
@@ -143,7 +152,7 @@ validator transfer_logic_validator(
           expect acc
           let action = utils.safe_list_at(redeemer.destination_actions, index)
           let kyc_ok =
-            if gs_datum.receiver_kyc_enabled {
+            if gs_datum.requires_receiver_kyc {
               verify_kyc_proof(
                 action.destination_proof,
                 dest_pkh,

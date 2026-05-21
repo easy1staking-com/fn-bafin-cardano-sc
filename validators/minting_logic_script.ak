@@ -24,7 +24,7 @@ validator minting_logic_validator(
         self.reference_inputs,
         registry_policy_id,
         credential,
-        2,
+        constants.minting_logic_script_registry_node_index,
       )
 
     let minted_amount =

@@ -36,7 +36,7 @@ pub type GlobalStateDatum {
   member_root_hash: ByteArray,
   // Whether KYC is required for receiving transfers. 
   // If false, only the sender's KYC needs to be verified for a transfer; if true, both sender and receiver KYC are
-  receiver_kyc_enabled: Bool,
+  requires_receiver_kyc: Bool,
 }
 
 /// Asserts the given input is an authentic GS UTxO (carries exactly 1 GS NFT)
@@ -139,7 +139,7 @@ fn test_gs_input(transfers_paused: Bool) -> Input {
       security_info: builtin.constr_data(0, []),
       trusted_entity_vkeys: [],
       member_root_hash: #"",
-      receiver_kyc_enabled: False,
+      requires_receiver_kyc: False,
     }
   Input {
     output_reference: OutputReference {

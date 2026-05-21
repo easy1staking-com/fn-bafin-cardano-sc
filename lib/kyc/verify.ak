@@ -253,7 +253,7 @@ fn test_gs_datum_with_tel(
     security_info: builtin.constr_data(0, []),
     trusted_entity_vkeys: trusted_keys,
     member_root_hash: #"",
-    receiver_kyc_enabled: True,
+    requires_receiver_kyc: True,
   }
 }
 
@@ -268,7 +268,7 @@ fn test_gs_datum_with_root(root: ByteArray) -> GlobalStateDatum {
     security_info: builtin.constr_data(0, []),
     trusted_entity_vkeys: [],
     member_root_hash: root,
-    receiver_kyc_enabled: True,
+    requires_receiver_kyc: True,
   }
 }
 

@@ -80,17 +80,18 @@ validator global_state_mint_validator(tx0: ByteArray, index0: Int) {
     //we won't use input_present, we just need it to be there, otherwise error
     expect Some(_input_present) = find_input(self.inputs, one_time_utxo)
 
-    expect Some(output_parameters) =
-      list.find(
+    let output_parameters =
+      list.expect_find(
         self.outputs,
         fn(output) {
-          quantity_of(
+          assets.has_nft_strict(
             output.value,
             policy_id,
             constants.global_state_asset_name,
-          ) == 1
+          )
         },
       )
+
     expect InlineDatum(output_datum_raw) = output_parameters.datum
     expect output_datum: GlobalStateDatum = output_datum_raw
 
@@ -186,7 +187,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           //Remaining amount must NOT be negative
@@ -230,7 +231,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           no_concurrent_security_mint,
@@ -255,7 +256,7 @@ validator global_state_spend_validator(
             security_info: new_security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           no_concurrent_security_mint,
@@ -287,7 +288,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           no_concurrent_security_mint,
@@ -314,7 +315,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           no_concurrent_security_mint,
@@ -360,7 +361,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: updated_entities,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           no_concurrent_security_mint,
@@ -385,7 +386,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: enabled,
+            requires_receiver_kyc: enabled,
           }
         and {
           no_concurrent_security_mint,
@@ -407,7 +408,7 @@ validator global_state_spend_validator(
             security_info: input_datum.security_info,
             trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
             member_root_hash: input_datum.member_root_hash,
-            receiver_kyc_enabled: input_datum.receiver_kyc_enabled,
+            requires_receiver_kyc: input_datum.requires_receiver_kyc,
           }
         and {
           no_concurrent_security_mint,
