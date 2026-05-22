@@ -81,8 +81,11 @@ pub fn derive_issuance_policy_id_from_registry_node(
     )
   let registry_raw: Data = expect_inline_datum(registry_ref_input.output)
   let registry_fields: List<Data> = builtin.unconstr_fields(registry_raw)
-  let reg_hashed_params: ByteArray =
-    builtin.un_b_data(list.at(registry_fields, registry_node_field_index))
+  // let reg_hashed_params: ByteArray =
+  //   builtin.un_b_data(list.at(registry_fields, registry_node_field_index))
+  expect Some(reg_hashed_params_data) =
+    list.at(registry_fields, registry_node_field_index)
+  let reg_hashed_params: ByteArray = builtin.un_b_data(reg_hashed_params_data)
   // Checking if the hashed params in the registry match the hashed params provided in the redeemer
   // Which if it's the case the key of the node_registry is the issuance_policy_id
   expect reg_hashed_params == hashed_params
