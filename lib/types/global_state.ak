@@ -108,7 +108,7 @@ pub type GlobalStateSpendAction {
     new_vkey: ByteArray,
     new_metadata: TrustedEntityMetadata,
   }
-  SetReceiverKycEnabled { enabled: Bool }
+  SetRequiresReceiverKyc { enabled: Bool }
   RotateAdmin { new_admin_credential_hash: ByteArray }
 }
 
@@ -129,18 +129,17 @@ const test_admin_pkh: ByteArray =
   #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 fn test_gs_input(transfers_paused: Bool) -> Input {
-  let datum =
-    GlobalStateDatum {
-      transfers_paused,
-      mintable_amount: 1_000_000,
-      admin_credential_hash: test_admin_pkh,
-      power_user_linked_list_policy_id: #"",
-      denylist_linked_list_policy_id: #"",
-      security_info: builtin.constr_data(0, []),
-      trusted_entity_vkeys: [],
-      member_root_hash: #"",
-      requires_receiver_kyc: False,
-    }
+  let datum = GlobalStateDatum {
+    transfers_paused,
+    mintable_amount: 1_000_000,
+    admin_credential_hash: test_admin_pkh,
+    power_user_linked_list_policy_id: #"",
+    denylist_linked_list_policy_id: #"",
+    security_info: builtin.constr_data(0, []),
+    trusted_entity_vkeys: [],
+    member_root_hash: #"",
+    requires_receiver_kyc: False,
+  }
   Input {
     output_reference: OutputReference {
       transaction_id: #"0000000000000000000000000000000000000000000000000000000000000000",

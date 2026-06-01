@@ -360,12 +360,15 @@ public class E2ETest {
         byte[] mintingLogicHash   = mintingLogic.script().getScriptHash();
         byte[] transferLogicHash  = transferLogic.script().getScriptHash();
 
+        // Indices 2/3/4 carry script `Credential`s (Script = Constr index 1),
+        // matching the CIP-113 registry node layout that
+        // utils.derive_issuance_policy_id_from_registry_node decodes.
         PlutusData registryDatum = ConstrPlutusData.of(0,
-            BytesPlutusData.of(issuancePolicyId),    // 0: issuance_policy_id
-            PlutusData.unit(),                       // 1: unused
-            BytesPlutusData.of(mintingLogicHash),    // 2: minting_logic hash (== hashed_params)
-            BytesPlutusData.of(transferLogicHash),   // 3: transfer_logic hash
-            PlutusData.unit());                      // 4: unused (third-party slot)
+            BytesPlutusData.of(issuancePolicyId),                          // 0: issuance_policy_id
+            PlutusData.unit(),                                             // 1: unused
+            ConstrPlutusData.of(1, BytesPlutusData.of(mintingLogicHash)),  // 2: minting_logic Script credential (== hashed_params)
+            ConstrPlutusData.of(1, BytesPlutusData.of(transferLogicHash)), // 3: transfer_logic Script credential
+            PlutusData.unit());                                            // 4: unused (third-party slot)
 
         Asset registryNft = new Asset(
             "0x" + HexUtil.encodeHexString(assetName),
