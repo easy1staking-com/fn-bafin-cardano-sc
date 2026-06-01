@@ -109,6 +109,7 @@ pub type GlobalStateSpendAction {
     new_metadata: TrustedEntityMetadata,
   }
   SetRequiresReceiverKyc { enabled: Bool }
+  UpdateMemberRootHash { new_member_root_hash: ByteArray }
   RotateAdmin { new_admin_credential_hash: ByteArray }
 }
 

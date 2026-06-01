@@ -11,7 +11,8 @@ use constants
 use types/global_state.{
   AddTrustedEntity, GlobalStateDatum, GlobalStateSpendRedeemer, MintSecurity,
   ModifySecurityInfo, PauseTransfers, RemoveTrustedEntity, RotateAdmin,
-  SetRequiresReceiverKyc, TrustedEntityMetadata, UpdateTrustedEntity,
+  SetRequiresReceiverKyc, TrustedEntityMetadata, UpdateMemberRootHash,
+  UpdateTrustedEntity,
 }
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential, quantity_of_policy_id}
@@ -384,6 +385,27 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: enabled,
+        }
+        and {
+          no_concurrent_security_mint,
+          address_preserved,
+          nft_preserved,
+          value_preserved,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
+          parsed_global_state_output_datum == expected_datum,
+        }
+      }
+      UpdateMemberRootHash { new_member_root_hash } -> {
+        let expected_datum = GlobalStateDatum {
+          transfers_paused: input_datum.transfers_paused,
+          mintable_amount: input_datum.mintable_amount,
+          admin_credential_hash: input_datum.admin_credential_hash,
+          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
+          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
+          security_info: input_datum.security_info,
+          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
+          member_root_hash: new_member_root_hash,
+          requires_receiver_kyc: input_datum.requires_receiver_kyc,
         }
         and {
           no_concurrent_security_mint,
