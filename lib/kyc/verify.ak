@@ -56,18 +56,27 @@ pub fn verify_attestation_proof(
   // 2–6. Payload field checks (guarded).
   let fields_ok =
     if lengths_ok {
+      // bytearray.slice takes (start, end_inclusive), so end = start+width-1.
       let payload_user_pkh =
-        bytearray.slice(payload, offset_user_pkh, width_user_pkh)
+        bytearray.slice(
+          payload,
+          offset_user_pkh,
+          offset_user_pkh + width_user_pkh - 1,
+        )
       let payload_tier = builtin.index_bytearray(payload, offset_user_kyc_tier)
       let payload_ttl =
         bytearray.to_int_big_endian(
-          bytearray.slice(payload, offset_valid_until_ms, width_valid_until_ms),
+          bytearray.slice(
+            payload,
+            offset_valid_until_ms,
+            offset_valid_until_ms + width_valid_until_ms - 1,
+          ),
         )
       let payload_policy =
         bytearray.slice(
           payload,
           offset_security_policy_id,
-          width_security_policy_id,
+          offset_security_policy_id + width_security_policy_id - 1,
         )
       let payload_network = builtin.index_bytearray(payload, offset_network_id)
 
@@ -253,6 +262,7 @@ fn test_gs_datum_with_tel(
     security_info: builtin.constr_data(0, []),
     trusted_entity_vkeys: trusted_keys,
     member_root_hash: #"",
+    requires_receiver_kyc: True,
   }
 }
 
@@ -267,6 +277,7 @@ fn test_gs_datum_with_root(root: ByteArray) -> GlobalStateDatum {
     security_info: builtin.constr_data(0, []),
     trusted_entity_vkeys: [],
     member_root_hash: root,
+    requires_receiver_kyc: True,
   }
 }
 

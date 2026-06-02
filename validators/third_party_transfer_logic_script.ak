@@ -1,7 +1,7 @@
 use aiken/collection/list
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
 use cardano/address.{Credential, Inline, Script, VerificationKey}
-use cardano/assets.{PolicyId, quantity_of}
+use cardano/assets.{quantity_of}
 use cardano/certificate.{Certificate, RegisterCredential}
 use cardano/transaction.{InlineDatum, Transaction}
 use constants
@@ -31,13 +31,21 @@ validator third_party_transfer_logic_validator(
   security_asset_name: ByteArray,
   power_users_linked_list_policy_id: ByteArray,
   global_state_policy_id: ByteArray,
-  issuance_policy_id: PolicyId,
+  registry_policy_id: ByteArray,
 ) {
   withdraw(
     redeemer: ThirdPartyTransferLogicScriptWithdrawRedeemer,
-    _credential: Credential,
+    credential: Credential,
     self: Transaction,
   ) {
+    let issuance_policy_id =
+      utils.derive_issuance_policy_id_from_registry_node(
+        self.reference_inputs,
+        registry_policy_id,
+        credential,
+        constants.transfer_logic_script_registry_node_index,
+      )
+
     // Pause + GS-datum decode.
     let gs_input =
       utils.safe_list_at(

@@ -34,6 +34,9 @@ pub type GlobalStateDatum {
   trusted_entity_vkeys: Pairs<ByteArray, TrustedEntityMetadata>,
   /// Root hash of the MPF membership tree (32 bytes); empty = no members yet
   member_root_hash: ByteArray,
+  // Whether KYC is required for receiving transfers. 
+  // If false, only the sender's KYC needs to be verified for a transfer; if true, both sender and receiver KYC are
+  requires_receiver_kyc: Bool,
 }
 
 /// Asserts the given input is an authentic GS UTxO (carries exactly 1 GS NFT)
@@ -105,6 +108,8 @@ pub type GlobalStateSpendAction {
     new_vkey: ByteArray,
     new_metadata: TrustedEntityMetadata,
   }
+  SetRequiresReceiverKyc { enabled: Bool }
+  UpdateMemberRootHash { new_member_root_hash: ByteArray }
   RotateAdmin { new_admin_credential_hash: ByteArray }
 }
 
@@ -125,17 +130,17 @@ const test_admin_pkh: ByteArray =
   #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 fn test_gs_input(transfers_paused: Bool) -> Input {
-  let datum =
-    GlobalStateDatum {
-      transfers_paused,
-      mintable_amount: 1_000_000,
-      admin_credential_hash: test_admin_pkh,
-      power_user_linked_list_policy_id: #"",
-      denylist_linked_list_policy_id: #"",
-      security_info: builtin.constr_data(0, []),
-      trusted_entity_vkeys: [],
-      member_root_hash: #"",
-    }
+  let datum = GlobalStateDatum {
+    transfers_paused,
+    mintable_amount: 1_000_000,
+    admin_credential_hash: test_admin_pkh,
+    power_user_linked_list_policy_id: #"",
+    denylist_linked_list_policy_id: #"",
+    security_info: builtin.constr_data(0, []),
+    trusted_entity_vkeys: [],
+    member_root_hash: #"",
+    requires_receiver_kyc: False,
+  }
   Input {
     output_reference: OutputReference {
       transaction_id: #"0000000000000000000000000000000000000000000000000000000000000000",
