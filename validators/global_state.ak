@@ -194,6 +194,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           //Remaining amount must NOT be negative
@@ -235,6 +236,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -259,6 +261,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -289,6 +292,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: updated_entities,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -317,6 +321,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: updated_entities,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -361,6 +366,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: updated_entities,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -385,6 +391,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: enabled,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -406,6 +413,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: new_member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,
@@ -427,6 +435,7 @@ validator global_state_spend_validator(
           trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
           member_root_hash: input_datum.member_root_hash,
           requires_receiver_kyc: input_datum.requires_receiver_kyc,
+          network_id: input_datum.network_id,
         }
         and {
           no_concurrent_security_mint,

@@ -19,16 +19,18 @@ validator minting_logic_validator(
     credential: Credential,
     self: Transaction,
   ) {
-    let issuance_policy_id =
-      utils.derive_issuance_policy_id_from_registry_node(
-        self.reference_inputs,
-        registry_policy_id,
-        credential,
-        constants.minting_logic_script_registry_node_index,
-      )
+    let issuance_policy_id = utils.derive_issuance_policy_id_from_registry_node(
+      self.reference_inputs,
+      registry_policy_id,
+      credential,
+      constants.minting_logic_script_registry_node_index,
+    )
 
-    let minted_amount =
-      quantity_of(self.mint, issuance_policy_id, security_asset_name)
+    let minted_amount = quantity_of(
+      self.mint,
+      issuance_policy_id,
+      security_asset_name,
+    )
 
     // GS is always spent during a mint under the Track 4 design (GS minted at
     // initCompliance; register spends-and-updates it via the MintSecurity
@@ -37,8 +39,10 @@ validator minting_logic_validator(
     // an input implies the GS spend validator is running; by the non-Mint-
     // branches-reject-mint invariant in global_state.ak, only the MintSecurity
     // branch permits a security-token mint — and it decrements `mintable_amount`.
-    let gs_input =
-      utils.safe_list_at(self.inputs, redeemer.global_state_input_index)
+    let gs_input = utils.safe_list_at(
+      self.inputs,
+      redeemer.global_state_input_index,
+    )
     expect
       quantity_of(
         gs_input.output.value,
@@ -46,27 +50,25 @@ validator minting_logic_validator(
         constants.global_state_asset_name,
       ) == 1
 
-    let power_user_ref_input =
-      utils.safe_list_at(
-        self.reference_inputs,
-        redeemer.power_user_node_ref_input_index,
-      )
+    let power_user_ref_input = utils.safe_list_at(
+      self.reference_inputs,
+      redeemer.power_user_node_ref_input_index,
+    )
 
-    let (power_user_node_key, power_user_data) =
-      get_element_info(
-        power_user_ref_input.output,
-        fn(_lovelace, node_key, data, _link) {
-          expect Some(key) = node_key
-          expect power_user_data: PowerUser = data
-          (key, power_user_data)
-        },
-      )
-        |> run_element_with(
-            power_users_linked_list_policy_id,
-            constants.linked_list_root_key,
-            constants.linked_list_node_key_prefix,
-            constants.linked_list_node_key_prefix_length,
-          )
+    let (power_user_node_key, power_user_data) = get_element_info(
+      power_user_ref_input.output,
+      fn(_lovelace, node_key, data, _link) {
+        expect Some(key) = node_key
+        expect power_user_data: PowerUser = data
+        (key, power_user_data)
+      },
+    )
+      |> run_element_with(
+          power_users_linked_list_policy_id,
+          constants.linked_list_root_key,
+          constants.linked_list_node_key_prefix,
+          constants.linked_list_node_key_prefix_length,
+        )
 
     and {
       //Redeemer contains the amount just for easy reference for eventual other contracts
