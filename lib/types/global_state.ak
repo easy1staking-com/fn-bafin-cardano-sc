@@ -34,9 +34,14 @@ pub type GlobalStateDatum {
   trusted_entity_vkeys: Pairs<ByteArray, TrustedEntityMetadata>,
   /// Root hash of the MPF membership tree (32 bytes); empty = no members yet
   member_root_hash: ByteArray,
-  // Whether KYC is required for receiving transfers. 
+  // Whether KYC is required for receiving transfers.
   // If false, only the sender's KYC needs to be verified for a transfer; if true, both sender and receiver KYC are
   requires_receiver_kyc: Bool,
+  // Network this deployment targets
+  // Bound into every KYC proof payload to prevent cross-network
+  // replay. Set once at genesis and IMMUTABLE: every spend branch carries it
+  // forward unchanged via `expected_datum`, so no action can ever alter it.
+  network_id: Int,
 }
 
 /// Asserts the given input is an authentic GS UTxO (carries exactly 1 GS NFT)
@@ -140,6 +145,7 @@ fn test_gs_input(transfers_paused: Bool) -> Input {
     trusted_entity_vkeys: [],
     member_root_hash: #"",
     requires_receiver_kyc: False,
+    network_id: 1,
   }
   Input {
     output_reference: OutputReference {
