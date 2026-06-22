@@ -57,6 +57,20 @@ pub fn replace_data_field(
   }
 }
 
+/// Bool <-> Plutus Data codec. The 0/1 constructor convention lives here in one
+/// place: False = Constr 0 [], True = Constr 1 [].
+pub fn data_to_bool(value: Data) -> Bool {
+  builtin.unconstr_index(value) == 1
+}
+
+pub fn bool_to_data(value: Bool) -> Data {
+  if value {
+    builtin.constr_data(1, [])
+  } else {
+    builtin.constr_data(0, [])
+  }
+}
+
 pub fn get_config_as_data_list(
   config_ref_input: Input,
   config_nft_policy_id: ByteArray,

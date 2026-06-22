@@ -12,7 +12,9 @@ use types/global_state.{
   AddTrustedEntity, GlobalStateDatum, GlobalStateSpendRedeemer, MintSecurity,
   ModifySecurityInfo, PauseTransfers, RemoveTrustedEntity, RotateAdmin,
   SetRequiresReceiverKyc, TrustedEntityMetadata, UpdateMemberRootHash,
-  UpdateTrustedEntity,
+  UpdateTrustedEntity, set_admin_credential_hash, set_member_root_hash,
+  set_mintable_amount, set_requires_receiver_kyc, set_security_info,
+  set_transfers_paused, set_trusted_entity_vkeys,
 }
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential, quantity_of_policy_id}
@@ -190,10 +192,9 @@ validator global_state_spend_validator(
           security_asset_name,
         )
         let remaining_amount = input_datum.mintable_amount - minted_amount
-        let new_mintable_amount: Data = remaining_amount
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 1, new_mintable_amount),
+        let expected_output_datum = set_mintable_amount(
+          input_fields,
+          remaining_amount,
         )
         and {
           //Remaining amount must NOT be negative
@@ -225,16 +226,9 @@ validator global_state_spend_validator(
               constants.linked_list_node_key_prefix_length,
             )
 
-        // transfers_paused is field 0 (the head): remove the head, place the
-        // new Bool (False = Constr 0 [], True = Constr 1 []), share the tail.
-        let new_transfers_paused: Data = if transfers_paused {
-          builtin.constr_data(1, [])
-        } else {
-          builtin.constr_data(0, [])
-        }
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 0, new_transfers_paused),
+        let expected_output_datum = set_transfers_paused(
+          input_fields,
+          transfers_paused,
         )
         and {
           no_concurrent_security_mint,
@@ -249,9 +243,9 @@ validator global_state_spend_validator(
         }
       }
       ModifySecurityInfo { new_security_info } -> {
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 5, new_security_info),
+        let expected_output_datum = set_security_info(
+          input_fields,
+          new_security_info,
         )
         and {
           no_concurrent_security_mint,
@@ -272,10 +266,9 @@ validator global_state_spend_validator(
           metadata,
           bytearray.compare,
         )
-        let new_trusted_entity_vkeys: Data = updated_entities
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 6, new_trusted_entity_vkeys),
+        let expected_output_datum = set_trusted_entity_vkeys(
+          input_fields,
+          updated_entities,
         )
         and {
           no_concurrent_security_mint,
@@ -294,10 +287,9 @@ validator global_state_spend_validator(
           input_datum.trusted_entity_vkeys,
           fn(p) { p.1st != vkey },
         )
-        let new_trusted_entity_vkeys: Data = updated_entities
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 6, new_trusted_entity_vkeys),
+        let expected_output_datum = set_trusted_entity_vkeys(
+          input_fields,
+          updated_entities,
         )
         and {
           no_concurrent_security_mint,
@@ -332,10 +324,9 @@ validator global_state_spend_validator(
           new_metadata,
           bytearray.compare,
         )
-        let new_trusted_entity_vkeys: Data = updated_entities
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 6, new_trusted_entity_vkeys),
+        let expected_output_datum = set_trusted_entity_vkeys(
+          input_fields,
+          updated_entities,
         )
         and {
           no_concurrent_security_mint,
@@ -350,16 +341,9 @@ validator global_state_spend_validator(
         }
       }
       SetRequiresReceiverKyc { enabled } -> {
-        // requires_receiver_kyc is field 8 (a Bool): False = Constr 0 [],
-        // True = Constr 1 [].
-        let new_requires_receiver_kyc: Data = if enabled {
-          builtin.constr_data(1, [])
-        } else {
-          builtin.constr_data(0, [])
-        }
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 8, new_requires_receiver_kyc),
+        let expected_output_datum = set_requires_receiver_kyc(
+          input_fields,
+          enabled,
         )
         and {
           no_concurrent_security_mint,
@@ -371,10 +355,9 @@ validator global_state_spend_validator(
         }
       }
       UpdateMemberRootHash { new_member_root_hash } -> {
-        let new_member_root_hash_data: Data = new_member_root_hash
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(input_fields, 7, new_member_root_hash_data),
+        let expected_output_datum = set_member_root_hash(
+          input_fields,
+          new_member_root_hash,
         )
         and {
           no_concurrent_security_mint,
@@ -386,14 +369,9 @@ validator global_state_spend_validator(
         }
       }
       RotateAdmin { new_admin_credential_hash } -> {
-        let new_admin_credential_hash_data: Data = new_admin_credential_hash
-        let expected_output_datum = builtin.constr_data(
-          0,
-          utils.replace_data_field(
-            input_fields,
-            2,
-            new_admin_credential_hash_data,
-          ),
+        let expected_output_datum = set_admin_credential_hash(
+          input_fields,
+          new_admin_credential_hash,
         )
         and {
           no_concurrent_security_mint,
