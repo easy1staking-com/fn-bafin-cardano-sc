@@ -71,18 +71,18 @@ pub fn is_paused(gs_input: Input, global_state_policy_id: ByteArray) -> Bool {
   builtin.unconstr_index(transfers_paused_data) == 1
 }
 
-/// Resolves the GS reference input at `ref_index`, authenticates it via the
-/// GS NFT, parses its inline datum, and returns the current admin credential
-/// hash. Helper for validators (power_users, denylist) that delegate admin
-/// checks to the GS datum instead of holding a compile-time owner parameter.
+/// Resolves the GS reference input at `ref_index`, authenticates it via the GS
+/// NFT, and returns its parsed inline datum. Helper for validators (power_users,
+/// denylist) that read protocol state from the GS datum instead of holding a
+/// compile-time owner parameter.
 ///
 /// Fails (UPLC error) if: index out of range, NFT missing, datum non-inline,
 /// or datum shape invalid.
-pub fn admin_from_ref_input(
+pub fn gs_datum_from_ref_input(
   reference_inputs: List<Input>,
   ref_index: Int,
   global_state_policy_id: ByteArray,
-) -> ByteArray {
+) -> GlobalStateDatum {
   let gs_ref = utils.safe_list_at(reference_inputs, ref_index)
   expect
     quantity_of(
@@ -92,7 +92,18 @@ pub fn admin_from_ref_input(
     ) > 0
   expect InlineDatum(gs_raw) = gs_ref.output.datum
   expect gs: GlobalStateDatum = gs_raw
-  gs.admin_credential_hash
+  gs
+}
+
+/// Convenience accessor: the current admin credential hash from the GS datum at
+/// `ref_index`. Used by admin-gated flows (power-user list lifecycle, denylist
+/// teardown).
+pub fn admin_from_ref_input(
+  reference_inputs: List<Input>,
+  ref_index: Int,
+  global_state_policy_id: ByteArray,
+) -> ByteArray {
+  gs_datum_from_ref_input(reference_inputs, ref_index, global_state_policy_id).admin_credential_hash
 }
 
 /// Spend actions on the global_state UTxO. Admin-gated actions read the

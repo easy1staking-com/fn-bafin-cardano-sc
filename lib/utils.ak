@@ -40,6 +40,23 @@ pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
   dict.foldl(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
 }
 
+/// Rebuild a Constr field list, replacing the element at `index` with
+/// `new_value`. Every other field is carried through as opaque `Data` (no unwrap/rewrap).
+pub fn replace_data_field(
+  fields: List<Data>,
+  index: Int,
+  new_value: Data,
+) -> List<Data> {
+  if index == 0 {
+    [new_value, ..tail_list(fields)]
+  } else {
+    [
+      head_list(fields),
+      ..replace_data_field(tail_list(fields), index - 1, new_value)
+    ]
+  }
+}
+
 pub fn get_config_as_data_list(
   config_ref_input: Input,
   config_nft_policy_id: ByteArray,
