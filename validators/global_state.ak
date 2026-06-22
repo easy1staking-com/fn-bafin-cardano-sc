@@ -12,7 +12,9 @@ use types/global_state.{
   AddTrustedEntity, GlobalStateDatum, GlobalStateSpendRedeemer, MintSecurity,
   ModifySecurityInfo, PauseTransfers, RemoveTrustedEntity, RotateAdmin,
   SetRequiresReceiverKyc, TrustedEntityMetadata, UpdateMemberRootHash,
-  UpdateTrustedEntity,
+  UpdateTrustedEntity, set_admin_credential_hash, set_member_root_hash,
+  set_mintable_amount, set_requires_receiver_kyc, set_security_info,
+  set_transfers_paused, set_trusted_entity_vkeys,
 }
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential, quantity_of_policy_id}
@@ -149,7 +151,13 @@ validator global_state_spend_validator(
       redeemer.global_state_output_index,
     )
     expect InlineDatum(global_state_output_datum) = global_state_output.datum
-    expect parsed_global_state_output_datum: GlobalStateDatum = global_state_output_datum
+
+    // Raw Data field list of the (already validated) input datum. Each branch
+    // proves the output datum equals this with exactly one field replaced,
+    // sharing every unchanged field as opaque Data — no unwrap/rewrap, and no
+    // full-datum re-validation of the output.
+    let input_datum_data: Data = input_datum
+    let input_fields = builtin.unconstr_fields(input_datum_data)
 
     // All branches share these address/NFT preservation invariants.
     let address_preserved = global_state_output.address == own_input.output.address
@@ -184,25 +192,17 @@ validator global_state_spend_validator(
           security_asset_name,
         )
         let remaining_amount = input_datum.mintable_amount - minted_amount
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: remaining_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_mintable_amount(
+          input_fields,
+          remaining_amount,
+        )
         and {
           //Remaining amount must NOT be negative
           remaining_amount >= 0,
           address_preserved,
           nft_preserved,
           value_preserved,
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       PauseTransfers { transfers_paused, power_user_node_ref_input_index } -> {
@@ -226,18 +226,10 @@ validator global_state_spend_validator(
               constants.linked_list_node_key_prefix_length,
             )
 
-        let expected_datum = GlobalStateDatum {
+        let expected_output_datum = set_transfers_paused(
+          input_fields,
           transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
@@ -247,22 +239,14 @@ validator global_state_spend_validator(
           power_user_data.can_pause,
           //Must be signed by the power user
           must_be_signed_by_credential(self, power_user_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       ModifySecurityInfo { new_security_info } -> {
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: new_security_info,
-          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_security_info(
+          input_fields,
+          new_security_info,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
@@ -270,7 +254,7 @@ validator global_state_spend_validator(
           value_preserved,
           //Must be signed by the current admin (from input datum)
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       AddTrustedEntity { vkey, metadata } -> {
@@ -282,18 +266,10 @@ validator global_state_spend_validator(
           metadata,
           bytearray.compare,
         )
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: updated_entities,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_trusted_entity_vkeys(
+          input_fields,
+          updated_entities,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
@@ -302,7 +278,7 @@ validator global_state_spend_validator(
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           bytearray.length(vkey) == 32,
           !has_key,
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       RemoveTrustedEntity { vkey } -> {
@@ -311,18 +287,10 @@ validator global_state_spend_validator(
           input_datum.trusted_entity_vkeys,
           fn(p) { p.1st != vkey },
         )
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: updated_entities,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_trusted_entity_vkeys(
+          input_fields,
+          updated_entities,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
@@ -330,7 +298,7 @@ validator global_state_spend_validator(
           value_preserved,
           has_key,
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       UpdateTrustedEntity { old_vkey, new_vkey, new_metadata } -> {
@@ -356,18 +324,10 @@ validator global_state_spend_validator(
           new_metadata,
           bytearray.compare,
         )
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: updated_entities,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_trusted_entity_vkeys(
+          input_fields,
+          updated_entities,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
@@ -377,66 +337,42 @@ validator global_state_spend_validator(
           new_clash_ok,
           bytearray.length(new_vkey) == 32,
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       SetRequiresReceiverKyc { enabled } -> {
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: enabled,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_requires_receiver_kyc(
+          input_fields,
+          enabled,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
           nft_preserved,
           value_preserved,
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       UpdateMemberRootHash { new_member_root_hash } -> {
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: input_datum.admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
-          member_root_hash: new_member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_member_root_hash(
+          input_fields,
+          new_member_root_hash,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
           nft_preserved,
           value_preserved,
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
       RotateAdmin { new_admin_credential_hash } -> {
-        let expected_datum = GlobalStateDatum {
-          transfers_paused: input_datum.transfers_paused,
-          mintable_amount: input_datum.mintable_amount,
-          admin_credential_hash: new_admin_credential_hash,
-          power_user_linked_list_policy_id: input_datum.power_user_linked_list_policy_id,
-          denylist_linked_list_policy_id: input_datum.denylist_linked_list_policy_id,
-          security_info: input_datum.security_info,
-          trusted_entity_vkeys: input_datum.trusted_entity_vkeys,
-          member_root_hash: input_datum.member_root_hash,
-          requires_receiver_kyc: input_datum.requires_receiver_kyc,
-          network_id: input_datum.network_id,
-        }
+        let expected_output_datum = set_admin_credential_hash(
+          input_fields,
+          new_admin_credential_hash,
+        )
         and {
           no_concurrent_security_mint,
           address_preserved,
@@ -448,7 +384,7 @@ validator global_state_spend_validator(
           //forcing continuity.
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           must_be_signed_by_credential(self, new_admin_credential_hash),
-          parsed_global_state_output_datum == expected_datum,
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
       }
     }

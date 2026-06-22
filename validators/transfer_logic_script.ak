@@ -13,13 +13,13 @@ use utils
 /// Transfer logic for a BAFIN security token (Track 4, TEL+denylist model).
 ///
 /// Per-input check (for each unique sender stake credential):
-///   1. The redeemer's matching KYC proof validates against GS.trusted_entity_vkeys
-///      (signature + payload fields + TTL + tier + network + security binding).
+///   1. The redeemer's matching KYC proof validates against GS.trusted_entity_vkeys or the pkh of the sender is in the GS's merkle tree.
 ///   2. The sender is NOT in the denylist (covering-node absence proof).
 ///
 /// Per-output check (for each unique destination stake credential):
-///   3. The destination is NOT in the denylist. No KYC required — receiving
-///      is gated only by denylist absence.
+///   3. The destination is NOT in the denylist. 
+///   4. If GS.requires_receiver_kyc, the redeemer's matching KYC proof validates against GS.trusted_entity_vkeys as well (same checks as for senders)
+///      or if the pkh of the receiver is in the GS's merkle tree. 
 ///
 /// Plus the pause gate (GS must not be paused).
 validator transfer_logic_validator(
