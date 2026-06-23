@@ -3,7 +3,7 @@ use aiken/collection/list
 use aiken/collection/pairs
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list.{get_element_info, run_element_with}
-use cardano/assets.{PolicyId, Value, quantity_of}
+use cardano/assets.{PolicyId, Value, quantity_of, without_lovelace}
 use cardano/transaction.{
   InlineDatum, Mint, Output, OutputReference, Transaction, find_input,
 }
@@ -167,8 +167,10 @@ validator global_state_spend_validator(
       global_state_policy_id,
       constants.global_state_asset_name,
     ) == 1
-    // ensuring the ADA amount in the Utxo is preserverd
-    let value_preserved = own_input.output.value == global_state_output.value
+    // ensuring the token amount in the Utxo is preserverd - excluding lovelace
+    let value_preserved = without_lovelace(own_input.output.value) == without_lovelace(
+      global_state_output.value,
+    )
 
     // Non-MintSecurity branches reject concurrent security mint (preserves
     // supply-cap integrity across all non-cap-aware admin flows).
