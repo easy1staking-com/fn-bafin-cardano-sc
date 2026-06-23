@@ -1,8 +1,21 @@
-//CIP113 script hash, never changes
-pub const programmable_logic_base_script_hash = "TODO"
-
 //Asset name of the configuration NFT
 pub const config_asset_name = "Config"
 
 //Asset name of the global state NFT
 pub const global_state_asset_name = "GlobalState"
+
+//Linked list constants (matching v1.2.0 defaults for on-chain compatibility)
+pub const linked_list_root_key = #""
+
+pub const linked_list_node_key_prefix = "Node"
+
+pub const linked_list_node_key_prefix_length = 4
+
+// Indexes of the fields in the registry node which are used to verify the correctness of the registry node 
+// and extract the hashed params for deriving the issuance policy id
+// It is derived by index to allow the extension of the registry node in the future without breaking the logic of deriving the issuance policy id from the registry node
+pub const minting_logic_script_registry_node_index = 2
+
+pub const transfer_logic_script_registry_node_index = 3
+
+pub const third_party_transfer_logic_script_registry_node_index = 4

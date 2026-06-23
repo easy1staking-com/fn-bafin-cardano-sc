@@ -1,10 +1,98 @@
-// use aiken/collection/dict
-// use aiken/interval.{Finite, Interval, IntervalBound}
-// use cardano/address.{Address, Inline, StakeCredential}
-// use cardano/assets.{from_asset, from_asset_list}
-// use cardano/transaction.{Input, NoDatum, Output, OutputReference, Transaction}
-// use utils
+use cardano/address.{Address, Credential, Script}
+use cardano/assets.{from_asset, from_lovelace, merge}
+use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use constants
+use utils
 
+// Faithful mirror of the CIP-113 programmable-token registry node datum shape:
+// https://github.com/cardano-foundation/cip113-programmable-tokens/blob/main/lib/registry_node.ak
+//
+// Field order matters: `derive_issuance_policy_id_from_registry_node` reads the
+// node via `builtin.unconstr_fields` and indexes by position, so this type must
+// keep the exact CIP-113 layout.
+//   0: key                              (ByteArray)  -> the issuance policy id
+//   1: next                             (ByteArray)
+//   2: minting_logic_script             (Credential)
+//   3: transfer_logic_script            (Credential)
+//   4: third_party_transfer_logic_script(Credential)
+//   5: global_state_cs                  (ByteArray)
+type RegistryNode {
+  key: ByteArray,
+  next: ByteArray,
+  minting_logic_script: Credential,
+  transfer_logic_script: Credential,
+  third_party_transfer_logic_script: Credential,
+  global_state_cs: ByteArray,
+}
+
+// 28-byte stand-ins for the various script hashes / policy ids.
+const test_registry_policy_id: ByteArray =
+  #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+// `key` of the registry node == the derived issuance policy id.
+const test_issuance_policy_id: ByteArray =
+  #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+const test_minting_logic_hash: ByteArray =
+  #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+const test_transfer_logic_hash: ByteArray =
+  #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+const test_third_party_transfer_logic_hash: ByteArray =
+  #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+const test_global_state_cs: ByteArray =
+  #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+// Builds a reference input shaped exactly like a CIP-113 registry node UTxO:
+// it carries ada + exactly one registry NFT (so `has_any_nft_strict` finds it)
+// and an inline datum following the RegistryNode layout above.
+fn make_cip113_registry_ref_input() -> Input {
+  let node = RegistryNode {
+    key: test_issuance_policy_id,
+    next: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    minting_logic_script: Script(test_minting_logic_hash),
+    transfer_logic_script: Script(test_transfer_logic_hash),
+    third_party_transfer_logic_script: Script(
+      test_third_party_transfer_logic_hash,
+    ),
+    global_state_cs: test_global_state_cs,
+  }
+  Input {
+    output_reference: OutputReference {
+      transaction_id: #"0000000000000000000000000000000000000000000000000000000000000000",
+      output_index: 0,
+    },
+    output: Output {
+      address: Address {
+        payment_credential: Script(test_registry_policy_id),
+        stake_credential: None,
+      },
+      value: merge(
+        from_lovelace(2_000_000),
+        from_asset(test_registry_policy_id, "Node", 1),
+      ),
+      datum: InlineDatum(node),
+      reference_script: None,
+    },
+  }
+}
+
+// Exercises `derive_issuance_policy_id_from_registry_node` against the real
+// CIP-113 registry node shape. The transfer-logic credential (index 3) is the
+// one running the withdraw-0; the function must locate the node by its NFT,
+// decode the indexed field as a `Credential`, match its script hash against the
+// redeemer credential, and return `key` (field 0) as the issuance policy id.
+test derive_issuance_policy_id_from_cip113_registry_node() {
+  let issuance_policy_id = utils.derive_issuance_policy_id_from_registry_node(
+    [make_cip113_registry_ref_input()],
+    test_registry_policy_id,
+    Script(test_transfer_logic_hash),
+    constants.transfer_logic_script_registry_node_index,
+  )
+  issuance_policy_id == test_issuance_policy_id
+}
 // test is_user_allowed() {
 //   let userStakeCredential = Inline(address.VerificationKey("stake_credential"))
 //   let userTokenPolicyId = "TEST_POLICY"
