@@ -197,6 +197,17 @@ pub fn set_member_root_hash(fields: List<Data>, value: ByteArray) -> Data {
   )
 }
 
+pub fn set_requires_sender_kyc(fields: List<Data>, value: Bool) -> Data {
+  builtin.constr_data(
+    0,
+    utils.replace_data_field(
+      fields,
+      idx_requires_sender_kyc,
+      utils.bool_to_data(value),
+    ),
+  )
+}
+
 pub fn set_requires_receiver_kyc(fields: List<Data>, value: Bool) -> Data {
   builtin.constr_data(
     0,
@@ -286,6 +297,7 @@ pub type GlobalStateSpendAction {
     new_vkey: ByteArray,
     new_metadata: TrustedEntityMetadata,
   }
+  SetRequiresSenderKyc { enabled: Bool }
   SetRequiresReceiverKyc { enabled: Bool }
   UpdateMemberRootHash { new_member_root_hash: ByteArray }
   RotateAdmin { new_admin_credential_hash: ByteArray }

@@ -11,10 +11,11 @@ use constants
 use types/global_state.{
   AddTrustedEntity, GlobalStateDatum, GlobalStateSpendRedeemer, MintSecurity,
   ModifySecurityInfo, PauseTransfers, RemoveTrustedEntity, RotateAdmin,
-  SetRequiresReceiverKyc, TrustedEntityMetadata, UpdateMemberRootHash,
-  UpdateTrustedEntity, set_admin_credential_hash, set_member_root_hash,
-  set_mintable_amount, set_requires_receiver_kyc, set_security_info,
-  set_transfers_paused, set_trusted_entity_vkeys,
+  SetRequiresReceiverKyc, SetRequiresSenderKyc, TrustedEntityMetadata,
+  UpdateMemberRootHash, UpdateTrustedEntity, set_admin_credential_hash,
+  set_member_root_hash, set_mintable_amount, set_requires_receiver_kyc,
+  set_requires_sender_kyc, set_security_info, set_transfers_paused,
+  set_trusted_entity_vkeys,
 }
 use types/power_users.{PowerUser}
 use utils.{must_be_signed_by_credential, quantity_of_policy_id}
@@ -338,6 +339,20 @@ validator global_state_spend_validator(
           old_exists,
           new_clash_ok,
           bytearray.length(new_vkey) == 32,
+          must_be_signed_by_credential(self, input_datum.admin_credential_hash),
+          builtin.equals_data(expected_output_datum, global_state_output_datum),
+        }
+      }
+      SetRequiresSenderKyc { enabled } -> {
+        let expected_output_datum = set_requires_sender_kyc(
+          input_fields,
+          enabled,
+        )
+        and {
+          no_concurrent_security_mint,
+          address_preserved,
+          nft_preserved,
+          value_preserved,
           must_be_signed_by_credential(self, input_datum.admin_credential_hash),
           builtin.equals_data(expected_output_datum, global_state_output_datum),
         }
