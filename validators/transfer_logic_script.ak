@@ -106,14 +106,18 @@ validator transfer_logic_validator(
       fn(index, sender_pkh, acc) {
         expect acc
         let action = utils.safe_list_at(redeemer.actions_for_each_input, index)
-        let kyc_ok = verify_kyc_proof(
-          action.source_proof,
-          sender_pkh,
-          gs_datum,
-          issuance_policy_id,
-          gs_datum.network_id,
-          self,
-        )
+        let kyc_ok = if gs_datum.requires_receiver_kyc {
+          verify_kyc_proof(
+            action.source_proof,
+            sender_pkh,
+            gs_datum,
+            issuance_policy_id,
+            gs_datum.network_id,
+            self,
+          )
+        } else {
+          True
+        }
         let denylist_ok = verify_denylist_absence(
           sender_pkh,
           action.source_denylist_covering_ref_input_index,

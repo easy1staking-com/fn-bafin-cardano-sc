@@ -34,8 +34,9 @@ pub type GlobalStateDatum {
   trusted_entity_vkeys: Pairs<ByteArray, TrustedEntityMetadata>,
   /// Root hash of the MPF membership tree (32 bytes); empty = no members yet
   member_root_hash: ByteArray,
+  // Whether KYC is required for sending transfers.
+  requires_sender_kyc: Bool,
   // Whether KYC is required for receiving transfers.
-  // If false, only the sender's KYC needs to be verified for a transfer; if true, both sender and receiver KYC are
   requires_receiver_kyc: Bool,
   // Network this deployment targets
   // Bound into every KYC proof payload to prevent cross-network
@@ -69,9 +70,11 @@ pub const idx_trusted_entity_vkeys = 6
 
 pub const idx_member_root_hash = 7
 
-pub const idx_requires_receiver_kyc = 8
+pub const idx_requires_sender_kyc = 8
 
-pub const idx_network_id = 9
+pub const idx_requires_receiver_kyc = 9
+
+pub const idx_network_id = 10
 
 // Getters take the already-unconstr'd field list (`builtin.unconstr_fields`),
 // hiding the index + builtin unwrap behind a typed name. Reading several fields?
@@ -117,6 +120,10 @@ pub fn get_trusted_entity_vkeys(
 
 pub fn get_member_root_hash(fields: List<Data>) -> ByteArray {
   builtin.un_b_data(utils.safe_list_at(fields, idx_member_root_hash))
+}
+
+pub fn get_requires_sender_kyc(fields: List<Data>) -> Bool {
+  utils.data_to_bool(utils.safe_list_at(fields, idx_requires_sender_kyc))
 }
 
 pub fn get_requires_receiver_kyc(fields: List<Data>) -> Bool {
@@ -310,6 +317,7 @@ fn test_gs_input(transfers_paused: Bool) -> Input {
     security_info: builtin.constr_data(0, []),
     trusted_entity_vkeys: [],
     member_root_hash: #"",
+    requires_sender_kyc: False,
     requires_receiver_kyc: False,
     network_id: 1,
   }
@@ -357,6 +365,7 @@ fn test_layout_datum() -> GlobalStateDatum {
     security_info: builtin.i_data(5),
     trusted_entity_vkeys: [Pair(#"a6", builtin.i_data(60))],
     member_root_hash: #"a7",
+    requires_sender_kyc: True,
     requires_receiver_kyc: True,
     network_id: 9,
   }
